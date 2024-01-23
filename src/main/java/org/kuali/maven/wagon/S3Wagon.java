@@ -612,8 +612,8 @@ public class S3Wagon extends AbstractWagon implements RequestFactory {
 	 */
 	protected AWSCredentialsProvider getCredentials(final AuthenticationInfo authenticationInfo) {
 		Optional<AuthenticationInfo> auth = Optional.fromNullable(authenticationInfo);
-		AWSCredentialsProvider credProv = (AWSCredentialsProvider) MavenAwsCredentialsProviderChain.getInstance(auth);
-		return credProv;
+		AWSCredentialsProviderChain chain = new MavenAwsCredentialsProviderChain(auth);
+		return (AWSCredentialsProvider) chain.getCredentials();
 	}
 
 	@Override
