@@ -40,8 +40,6 @@ import org.kuali.common.threads.ExecutionStatistics;
 import org.kuali.common.threads.ThreadHandlerContext;
 import org.kuali.common.threads.ThreadInvoker;
 import org.kuali.common.threads.listener.PercentCompleteListener;
-import org.kuali.maven.wagon.auth.AwsCredentials;
-import org.kuali.maven.wagon.auth.AwsSessionCredentials;
 import org.kuali.maven.wagon.auth.MavenAwsCredentialsProviderChain;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -50,11 +48,8 @@ import com.amazonaws.AmazonClientException;
 import com.amazonaws.AmazonServiceException;
 import com.amazonaws.ClientConfiguration;
 import com.amazonaws.Protocol;
-import com.amazonaws.auth.AWSCredentials;
 import com.amazonaws.auth.AWSCredentialsProvider;
 import com.amazonaws.auth.AWSCredentialsProviderChain;
-import com.amazonaws.auth.AWSSessionCredentials;
-import com.amazonaws.auth.AWSSessionCredentialsProvider;
 import com.amazonaws.client.builder.AwsClientBuilder;
 import com.amazonaws.internal.ResettableInputStream;
 import com.amazonaws.services.s3.AmazonS3;
@@ -150,16 +145,16 @@ public class S3Wagon extends AbstractWagon implements RequestFactory {
 		super.addTransferListener(listener);
 	}
 
-	protected void validateBucket(AmazonS3 client2, String bucketName) {
+	protected void validateBucket(AmazonS3 client, String bucketName) {
 		log.debug("Looking for bucket: " + bucketName);
-		if (client2.doesBucketExist(bucketName)) {
+		if(client.doesBucketExistV2(bucketName)) {
 			log.debug("Found bucket '" + bucketName + "' Validating permissions");
-			validatePermissions(client2, bucketName);
+			validatePermissions(client, bucketName);
 		} else {
 			log.info("Creating bucket " + bucketName);
 			// If we create the bucket, we "own" it and by default have the "fullcontrol"
 			// permission
-			client2.createBucket(bucketName);
+			client.createBucket(bucketName);
 		}
 	}
 
@@ -167,13 +162,13 @@ public class S3Wagon extends AbstractWagon implements RequestFactory {
 	 * Establish that we have enough permissions on this bucket to do what we need
 	 * to do
 	 * 
-	 * @param client2    S3 Client
+	 * @param client    S3 Client
 	 * @param bucketName AWS S3 Bucket Name.
 	 */
-	protected void validatePermissions(AmazonS3 client2, String bucketName) {
+	protected void validatePermissions(AmazonS3 client, String bucketName) {
 		// This establishes our ability to list objects in this bucket
 		ListObjectsRequest zeroObjectsRequest = new ListObjectsRequest(bucketName, null, null, null, 0);
-		client2.listObjects(zeroObjectsRequest);
+		client.listObjects(zeroObjectsRequest);
 
 		/**
 		 * The current AWS Java SDK does not appear to have a simple method for

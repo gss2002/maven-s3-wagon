@@ -21,7 +21,6 @@ import org.apache.maven.wagon.events.TransferEvent;
 import org.apache.maven.wagon.resource.Resource;
 
 import com.amazonaws.services.s3.AmazonS3;
-import com.amazonaws.services.s3.AmazonS3Client;
 import com.amazonaws.services.s3.transfer.TransferManager;
 
 /**
@@ -106,8 +105,8 @@ public class PutFileContext {
 		return client;
 	}
 
-	public void setClient(AmazonS3 client2) {
-		this.client = client2;
+	public void setClient(AmazonS3 client) {
+		this.client = client;
 	}
 
 }
