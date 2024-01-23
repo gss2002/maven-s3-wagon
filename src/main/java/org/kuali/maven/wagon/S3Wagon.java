@@ -20,6 +20,7 @@ import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
+import java.net.URI;
 import java.nio.file.Files;
 import java.util.ArrayList;
 import java.util.Date;
@@ -50,11 +51,18 @@ import com.amazonaws.AmazonServiceException;
 import com.amazonaws.ClientConfiguration;
 import com.amazonaws.Protocol;
 import com.amazonaws.auth.AWSCredentials;
+import com.amazonaws.auth.AWSCredentialsProvider;
 import com.amazonaws.auth.AWSCredentialsProviderChain;
 import com.amazonaws.auth.AWSSessionCredentials;
+import com.amazonaws.auth.AWSSessionCredentialsProvider;
+import com.amazonaws.client.builder.AwsClientBuilder;
 import com.amazonaws.internal.ResettableInputStream;
+import com.amazonaws.services.s3.AmazonS3;
+import com.amazonaws.services.s3.AmazonS3Builder;
 import com.amazonaws.services.s3.AmazonS3Client;
+import com.amazonaws.services.s3.AmazonS3ClientBuilder;
 import com.amazonaws.services.s3.internal.Mimetypes;
+import com.amazonaws.services.s3.internal.ServiceUtils;
 import com.amazonaws.services.s3.model.CannedAccessControlList;
 import com.amazonaws.services.s3.model.ListObjectsRequest;
 import com.amazonaws.services.s3.model.ObjectListing;
@@ -64,20 +72,26 @@ import com.amazonaws.services.s3.model.S3Object;
 import com.amazonaws.services.s3.model.S3ObjectSummary;
 import com.amazonaws.services.s3.transfer.TransferManager;
 import com.amazonaws.services.s3.transfer.TransferManagerBuilder;
+import com.amazonaws.util.AwsHostNameUtils;
+import com.amazonaws.util.RuntimeHttpUtils;
 import com.google.common.base.Optional;
 
 /**
  * <p>
- * An implementation of the Maven Wagon interface that is integrated with the Amazon S3 service.
+ * An implementation of the Maven Wagon interface that is integrated with the
+ * Amazon S3 service.
  * </p>
  * 
  * <p>
- * URLs that reference the S3 service should be in the form of <code>s3://bucket.name</code>. As an example <code>s3://maven.kuali.org</code> puts files into the
+ * URLs that reference the S3 service should be in the form of
+ * <code>s3://bucket.name</code>. As an example
+ * <code>s3://maven.kuali.org</code> puts files into the
  * <code>maven.kuali.org</code> bucket on the S3 service.
  * </p>
  * 
  * <p>
- * This implementation uses the <code>username</code> and <code>password</code> portions of the server authentication metadata for credentials.
+ * This implementation uses the <code>username</code> and <code>password</code>
+ * portions of the server authentication metadata for credentials.
  * </p>
  * 
  * @author Ben Hale
@@ -86,11 +100,16 @@ import com.google.common.base.Optional;
 public class S3Wagon extends AbstractWagon implements RequestFactory {
 
 	/**
-	 * Set the system property <code>maven.wagon.protocol</code> to <code>http</code> to force the wagon to communicate over <code>http</code>. Default is <code>https</code>.
+	 * Set the system property <code>maven.wagon.protocol</code> to
+	 * <code>http</code> to force the wagon to communicate over <code>http</code>.
+	 * Default is <code>https</code>.
 	 */
 	public static final String PROTOCOL_KEY = "maven.wagon.protocol";
 	public static final String HTTP = "http";
 	public static final String HTTP_ENDPOINT_VALUE = "http://s3.amazonaws.com";
+	public static final String VPC_ENDPOINT_KEY = "maven.wagon.s3.vpce";
+	public static final String REGION = "maven.wagon.s3.region";
+
 	public static final String HTTPS = "https";
 	public static final String MIN_THREADS_KEY = "maven.wagon.threads.min";
 	public static final String MAX_THREADS_KEY = "maven.wagon.threads.max";
@@ -101,6 +120,8 @@ public class S3Wagon extends AbstractWagon implements RequestFactory {
 	public static final int DEFAULT_READ_TIMEOUT = 60 * 1000;
 	private static final File TEMP_DIR = getCanonicalFile(System.getProperty("java.io.tmpdir"));
 	private static final String TEMP_DIR_PATH = TEMP_DIR.getAbsolutePath();
+	private static final String SDK_REGION_CHAIN_IN_USE = "S3 client is using the SDK region chaining resolution.";
+	private static final String S3_SERVICE_NAME = "s3";
 
 	ThreadInvoker invoker = new ThreadInvoker();
 	SimpleFormatter formatter = new SimpleFormatter();
@@ -108,6 +129,7 @@ public class S3Wagon extends AbstractWagon implements RequestFactory {
 	int maxThreads = getMaxThreads();
 	int divisor = getDivisor();
 	String protocol = getValue(PROTOCOL_KEY, HTTPS);
+	String vpce = getVpce();
 	boolean http = HTTP.equals(protocol);
 	int readTimeout = DEFAULT_READ_TIMEOUT;
 	CannedAccessControlList acl = null;
@@ -115,7 +137,7 @@ public class S3Wagon extends AbstractWagon implements RequestFactory {
 
 	private static final Logger log = LoggerFactory.getLogger(S3Wagon.class);
 
-	AmazonS3Client client;
+	AmazonS3 client;
 	String bucketName;
 	String basedir;
 
@@ -128,37 +150,45 @@ public class S3Wagon extends AbstractWagon implements RequestFactory {
 		super.addTransferListener(listener);
 	}
 
-	protected void validateBucket(AmazonS3Client client, String bucketName) {
+	protected void validateBucket(AmazonS3 client2, String bucketName) {
 		log.debug("Looking for bucket: " + bucketName);
-		if (client.doesBucketExist(bucketName)) {
+		if (client2.doesBucketExist(bucketName)) {
 			log.debug("Found bucket '" + bucketName + "' Validating permissions");
-			validatePermissions(client, bucketName);
+			validatePermissions(client2, bucketName);
 		} else {
 			log.info("Creating bucket " + bucketName);
-			// If we create the bucket, we "own" it and by default have the "fullcontrol" permission
-			client.createBucket(bucketName);
+			// If we create the bucket, we "own" it and by default have the "fullcontrol"
+			// permission
+			client2.createBucket(bucketName);
 		}
 	}
 
 	/**
-	 * Establish that we have enough permissions on this bucket to do what we need to do
+	 * Establish that we have enough permissions on this bucket to do what we need
+	 * to do
 	 * 
-	 * @param client S3 Client
+	 * @param client2    S3 Client
 	 * @param bucketName AWS S3 Bucket Name.
 	 */
-	protected void validatePermissions(AmazonS3Client client, String bucketName) {
+	protected void validatePermissions(AmazonS3 client2, String bucketName) {
 		// This establishes our ability to list objects in this bucket
 		ListObjectsRequest zeroObjectsRequest = new ListObjectsRequest(bucketName, null, null, null, 0);
-		client.listObjects(zeroObjectsRequest);
+		client2.listObjects(zeroObjectsRequest);
 
 		/**
-		 * The current AWS Java SDK does not appear to have a simple method for discovering what set of permissions the currently authenticated user has on a bucket. The AWS dev's
-		 * suggest that you attempt to perform an operation that would fail if you don't have the permission in question. You would then use the success/failure of that attempt to
-		 * establish what your permissions are. This is definitely not ideal and they are working on it, but it is not ready yet.
+		 * The current AWS Java SDK does not appear to have a simple method for
+		 * discovering what set of permissions the currently authenticated user has on a
+		 * bucket. The AWS dev's suggest that you attempt to perform an operation that
+		 * would fail if you don't have the permission in question. You would then use
+		 * the success/failure of that attempt to establish what your permissions are.
+		 * This is definitely not ideal and they are working on it, but it is not ready
+		 * yet.
 		 */
 
-		// Do something simple and quick to verify that we have write permissions on this bucket
-		// One way to do this would be to create an object in this bucket, and then immediately delete it
+		// Do something simple and quick to verify that we have write permissions on
+		// this bucket
+		// One way to do this would be to create an object in this bucket, and then
+		// immediately delete it
 		// That seems messy, inconvenient, and lame.
 
 	}
@@ -184,15 +214,61 @@ public class S3Wagon extends AbstractWagon implements RequestFactory {
 		return configuration;
 	}
 
-	protected AmazonS3Client getAmazonS3Client(AWSCredentials credentials) {
+	protected AmazonS3 getAmazonS3Client(AWSCredentialsProvider credentials) {
 		ClientConfiguration configuration = getClientConfiguration();
-		return new AmazonS3Client(credentials, configuration);
+		AmazonS3ClientBuilder builder = AmazonS3Client.builder();
+		builder.withCredentials(credentials);
+		builder.withClientConfiguration(configuration);
+		builder.withPathStyleAccessEnabled(false);
+		AwsClientBuilder.EndpointConfiguration epr = createEndpointConfiguration(getVpce(), configuration, getRegion());
+		configureEndpoint(builder, epr);
+		AmazonS3 client = builder.build();
+		return client;
+	}
+
+	public void configureEndpoint(AmazonS3ClientBuilder builder, AmazonS3Builder.EndpointConfiguration epr) {
+		if (epr != null) {
+			builder.withEndpointConfiguration(epr);
+		} else {
+			builder.withForceGlobalBucketAccessEnabled(true);
+			String region = getRegion();
+			if (!region.isEmpty()) {
+				builder.setRegion(region);
+			} else {
+				log.warn(SDK_REGION_CHAIN_IN_USE);
+				log.debug(SDK_REGION_CHAIN_IN_USE);
+			}
+		}
+
+	}
+
+	public AwsClientBuilder.EndpointConfiguration createEndpointConfiguration(String endpoint,
+			ClientConfiguration awsConf, String awsRegion) {
+		if (endpoint == null || endpoint.isEmpty()) {
+			log.debug("Using default endpoint - need need to generate configuration");
+			return null;
+		}
+		URI epr = RuntimeHttpUtils.toUri(endpoint, awsConf);
+		log.debug("Endpoint URI = {}", epr);
+		String region = awsRegion;
+		if (StringUtils.isBlank(region)) {
+			if (!ServiceUtils.isS3USStandardEndpoint(endpoint)) {
+				log.debug("Endpoint {} is not the default; parsing", epr);
+				region = AwsHostNameUtils.parseRegion(epr.getHost(), S3_SERVICE_NAME);
+			} else {
+				log.debug("Endpoint {} is the standard one; declde region as null", epr);
+				region = null;
+			}
+		}
+		log.debug("Region for endpoint " + endpoint + ", URI " + epr + " is determined as " + region);
+
+		return new AwsClientBuilder.EndpointConfiguration(endpoint, region);
 	}
 
 	@Override
 	protected void connectToRepository(Repository source, AuthenticationInfo auth, ProxyInfo proxy) {
 
-		AWSCredentials credentials = getCredentials(auth);
+		AWSCredentialsProvider credentials = getCredentials(auth);
 		this.client = getAmazonS3Client(credentials);
 		this.transferManager = TransferManagerBuilder.standard().withS3Client(this.client).build();
 		this.bucketName = source.getHost();
@@ -226,18 +302,20 @@ public class S3Wagon extends AbstractWagon implements RequestFactory {
 	 * Pull an object out of an S3 bucket and write it to a file
 	 */
 	@Override
-	protected void getResource(final String resourceName, final File destination, final TransferProgress progress) throws ResourceDoesNotExistException, IOException {
+	protected void getResource(final String resourceName, final File destination, final TransferProgress progress)
+			throws ResourceDoesNotExistException, IOException {
 		// Obtain the object from S3
 		S3Object object = null;
 		try {
 			String key = basedir + resourceName;
 			object = client.getObject(bucketName, key);
 		} catch (Exception e) {
-			throw new ResourceDoesNotExistException("Resource " + resourceName + " does not exist in the repository", e);
+			throw new ResourceDoesNotExistException("Resource " + resourceName + " does not exist in the repository",
+					e);
 		}
 
 		// first write the file to a temporary location
-		File temporaryDestination = File.createTempFile(destination.getName() , ".tmp",destination.getParentFile());
+		File temporaryDestination = File.createTempFile(destination.getName(), ".tmp", destination.getParentFile());
 		InputStream in = null;
 		OutputStream out = null;
 		try {
@@ -252,10 +330,10 @@ public class S3Wagon extends AbstractWagon implements RequestFactory {
 			IOUtils.closeQuietly(in);
 			IOUtils.closeQuietly(out);
 		}
-		// then move, to have an atomic operation to guarantee we don't have a partially downloaded file on disk
-		Files
-				.move(temporaryDestination.toPath(), destination.toPath(),
-						java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+		// then move, to have an atomic operation to guarantee we don't have a partially
+		// downloaded file on disk
+		Files.move(temporaryDestination.toPath(), destination.toPath(),
+				java.nio.file.StandardCopyOption.REPLACE_EXISTING);
 	}
 
 	/**
@@ -324,7 +402,8 @@ public class S3Wagon extends AbstractWagon implements RequestFactory {
 	/**
 	 * Normalize the key to our S3 object:<br>
 	 * Convert <code>./css/style.css</code> into <code>/css/style.css</code><br>
-	 * Convert <code>/foo/bar/../../css/style.css</code> into <code>/css/style.css</code><br>
+	 * Convert <code>/foo/bar/../../css/style.css</code> into
+	 * <code>/css/style.css</code><br>
 	 * 
 	 * @param key S3 Key string.
 	 * @return Normalized version of {@code key}.
@@ -341,7 +420,8 @@ public class S3Wagon extends AbstractWagon implements RequestFactory {
 		int pos = TEMP_DIR_PATH.length() + 1;
 		String suffix = canonical.substring(pos);
 
-		// Always replace backslash with forward slash just in case we are running on Windows
+		// Always replace backslash with forward slash just in case we are running on
+		// Windows
 		String canonicalKey = suffix.replace("\\", "/");
 
 		// Return the canonical key
@@ -392,9 +472,9 @@ public class S3Wagon extends AbstractWagon implements RequestFactory {
 	/**
 	 * Create a PutObjectRequest based on the source file and destination passed in.
 	 * 
-	 * @param source Local file to upload.
+	 * @param source      Local file to upload.
 	 * @param destination Destination S3 key.
-	 * @param progress Transfer listener.
+	 * @param progress    Transfer listener.
 	 * @return {@link PutObjectRequest} instance.
 	 */
 	protected PutObjectRequest getPutObjectRequest(File source, String destination, TransferProgress progress) {
@@ -415,8 +495,11 @@ public class S3Wagon extends AbstractWagon implements RequestFactory {
 	}
 
 	/**
-	 * On S3 there are no true "directories". An S3 bucket is essentially a Hashtable of files stored by key. The integration between a traditional file system and an S3 bucket is
-	 * to use the path of the file on the local file system as the key to the file in the bucket. The S3 bucket does not contain a separate key for the directory itself.
+	 * On S3 there are no true "directories". An S3 bucket is essentially a
+	 * Hashtable of files stored by key. The integration between a traditional file
+	 * system and an S3 bucket is to use the path of the file on the local file
+	 * system as the key to the file in the bucket. The S3 bucket does not contain a
+	 * separate key for the directory itself.
 	 */
 	public final void putDirectory(File sourceDir, String destinationDir) throws TransferFailedException {
 
@@ -490,7 +573,8 @@ public class S3Wagon extends AbstractWagon implements RequestFactory {
 	 * Store a resource into S3
 	 */
 	@Override
-	protected void putResource(final File source, final String destination, final TransferProgress progress) throws IOException {
+	protected void putResource(final File source, final String destination, final TransferProgress progress)
+			throws IOException {
 
 		// Create a new PutObjectRequest
 		PutObjectRequest request = getPutObjectRequest(source, destination, progress);
@@ -524,21 +608,17 @@ public class S3Wagon extends AbstractWagon implements RequestFactory {
 	}
 
 	/**
-	 * Create AWSCredentionals from the information in system properties, environment variables, settings.xml, or EC2 instance metadata (only applicable when running the wagon on
-	 * an Amazon EC2 instance)
+	 * Create AWSCredentionals from the information in system properties,
+	 * environment variables, settings.xml, or EC2 instance metadata (only
+	 * applicable when running the wagon on an Amazon EC2 instance)
 	 * 
 	 * @param authenticationInfo Authentication credentials from Maven settings.
 	 * @return Resolved AWS Credentials.
 	 */
-	protected AWSCredentials getCredentials(final AuthenticationInfo authenticationInfo) {
+	protected AWSCredentialsProvider getCredentials(final AuthenticationInfo authenticationInfo) {
 		Optional<AuthenticationInfo> auth = Optional.fromNullable(authenticationInfo);
 		AWSCredentialsProviderChain chain = new MavenAwsCredentialsProviderChain(auth);
-		AWSCredentials credentials = chain.getCredentials();
-		if (credentials instanceof AWSSessionCredentials) {
-			return new AwsSessionCredentials((AWSSessionCredentials) credentials);
-		} else {
-			return new AwsCredentials(credentials);
-		}
+		return (AWSCredentialsProvider) chain.getCredentials();
 	}
 
 	@Override
@@ -556,6 +636,14 @@ public class S3Wagon extends AbstractWagon implements RequestFactory {
 
 	protected int getMaxThreads() {
 		return getValue(MAX_THREADS_KEY, DEFAULT_MAX_THREAD_COUNT);
+	}
+
+	protected String getVpce() {
+		return getValue(VPC_ENDPOINT_KEY, "");
+	}
+
+	protected String getRegion() {
+		return getValue(REGION, "");
 	}
 
 	protected int getDivisor() {

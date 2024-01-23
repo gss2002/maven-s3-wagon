@@ -19,6 +19,7 @@ import org.kuali.common.aws.s3.S3Utils;
 import org.kuali.common.threads.ElementHandler;
 import org.kuali.common.threads.ListIteratorContext;
 
+import com.amazonaws.services.s3.AmazonS3;
 import com.amazonaws.services.s3.AmazonS3Client;
 import com.amazonaws.services.s3.model.PutObjectRequest;
 import com.amazonaws.services.s3.transfer.TransferManager;
@@ -28,7 +29,7 @@ public class FileHandler implements ElementHandler<PutFileContext> {
 	public void handleElement(ListIteratorContext<PutFileContext> context, int index, PutFileContext element) {
 		RequestFactory factory = element.getFactory();
 		TransferManager manager = element.getTransferManager();
-		AmazonS3Client client = element.getClient();
+		AmazonS3 client = element.getClient();
 		PutObjectRequest request = factory.getPutObjectRequest(element);
 		S3Utils.getInstance().upload(element.getSource(), request, client, manager);
 	}
