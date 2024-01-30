@@ -30,9 +30,9 @@
 	<url>https://github.com/seahen/maven-s3-wagon</url>
 	<properties>
 		<project.scm.vendor>git</project.scm.vendor>
-		<project.java.version>1.6</project.java.version>
-		<maven.compiler.source>1.6</maven.compiler.source>
-		<maven.compiler.target>1.6</maven.compiler.target>
+		<project.java.version>1.8</project.java.version>
+		<maven.compiler.source>1.8</maven.compiler.source>
+		<maven.compiler.target>1.8</maven.compiler.target>
 		<project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
 		<slf4j.version>1.7.5</slf4j.version>
 		<aws.version>1.12.642</aws.version>
