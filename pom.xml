@@ -122,11 +122,6 @@
 			<version>2.6</version>
 		</dependency>
 		<dependency>
-			<groupId>org.kuali.common</groupId>
-			<artifactId>kuali-threads</artifactId>
-			<version>1.0.10</version>
-		</dependency>
-		<dependency>
 			<groupId>org.slf4j</groupId>
 			<artifactId>slf4j-log4j12</artifactId>
 			<version>${slf4j.version}</version>
