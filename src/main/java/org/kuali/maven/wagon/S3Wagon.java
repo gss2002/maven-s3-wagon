@@ -23,6 +23,7 @@ import java.io.OutputStream;
 import java.net.URI;
 import java.net.URISyntaxException;
 import java.nio.file.Files;
+import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Date;
@@ -53,6 +54,7 @@ import software.amazon.awssdk.auth.credentials.AwsCredentialsProvider;
 import software.amazon.awssdk.awscore.exception.AwsServiceException;
 import software.amazon.awssdk.awscore.util.AwsHostNameUtils;
 import software.amazon.awssdk.core.ResponseInputStream;
+import software.amazon.awssdk.core.client.config.ClientOverrideConfiguration;
 import software.amazon.awssdk.core.exception.SdkClientException;
 import software.amazon.awssdk.core.internal.util.Mimetype;
 import software.amazon.awssdk.core.io.ResettableInputStream;
@@ -239,7 +241,8 @@ public class S3Wagon extends AbstractWagon implements RequestFactory {
 	protected S3Client getAmazonS3Client(AwsCredentialsProvider credentials) {
 		S3ClientBuilder builder = S3Client.builder();
 		builder.credentialsProvider(credentials);
-		//builder.withClientConfiguration(configuration);
+		ClientOverrideConfiguration clientOverride = ClientOverrideConfiguration.builder().apiCallTimeout(Duration.ofMillis(readTimeout)).apiCallAttemptTimeout(Duration.ofMillis(readTimeout)).build();
+		builder.overrideConfiguration(clientOverride);
 		builder.forcePathStyle(false);
 	    if (!(getVpce().isEmpty())) {
 	    	configureEndpoint(builder);
@@ -251,8 +254,9 @@ public class S3Wagon extends AbstractWagon implements RequestFactory {
 	protected S3AsyncClient getAmazonS3AsyncClient(AwsCredentialsProvider credentials) {
 		S3AsyncClientBuilder builder = S3AsyncClient.builder();
 		builder.credentialsProvider(credentials);
-		//builder.withClientConfiguration(configuration);
 		builder.forcePathStyle(false);
+		ClientOverrideConfiguration clientOverride = ClientOverrideConfiguration.builder().apiCallTimeout(Duration.ofMillis(readTimeout)).apiCallAttemptTimeout(Duration.ofMillis(readTimeout)).build();
+		builder.overrideConfiguration(clientOverride);
 	    if (!(getVpce().isEmpty())) {
 	    	configureAsyncEndpoint(builder);
 	    }
