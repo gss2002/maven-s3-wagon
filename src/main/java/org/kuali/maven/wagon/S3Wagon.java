@@ -247,7 +247,7 @@ public class S3Wagon extends AbstractWagon implements RequestFactory {
 		ClientOverrideConfiguration clientOverride = ClientOverrideConfiguration.builder().apiCallTimeout(Duration.ofMillis(readTimeout)).apiCallAttemptTimeout(Duration.ofMillis(readTimeout)).build();
 		builder.overrideConfiguration(clientOverride);
 		ApacheHttpClient.Builder httpClientBuilder =
-				ApacheHttpClient.builder().connectionTimeout(Duration.ofMillis(readTimeout)).connectionTimeToLive(Duration.ofMillis(readTimeout));
+				ApacheHttpClient.builder().connectionTimeout(Duration.ofMillis(readTimeout)).connectionTimeToLive(Duration.ofMillis(readTimeout)).socketTimeout(Duration.ofMillis(readTimeout));
 		builder.httpClientBuilder(httpClientBuilder);
 		builder.forcePathStyle(false);
 	    if (!(getVpce().isEmpty())) {
