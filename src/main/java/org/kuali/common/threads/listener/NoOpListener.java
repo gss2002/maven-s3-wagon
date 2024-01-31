@@ -22,16 +22,16 @@ package org.kuali.common.threads.listener;
  */
 public class NoOpListener<T> implements ProgressListener<T> {
 
-    public void progressCompleted() {
-        ; // do nothing
-    }
+	public void progressCompleted() {
+		; // do nothing
+	}
 
-    public void progressStarted() {
-        ; // do nothing
-    }
+	public void progressStarted() {
+		; // do nothing
+	}
 
-    public void progressOccurred(int count, int total, ProgressEvent<T> event) {
-        ; // do nothing
-    }
+	public void progressOccurred(int count, int total, ProgressEvent<T> event) {
+		; // do nothing
+	}
 
 }

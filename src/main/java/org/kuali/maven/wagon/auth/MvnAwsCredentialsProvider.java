@@ -20,26 +20,27 @@ import com.google.common.base.Optional;
 import software.amazon.awssdk.utils.ToString;
 
 public class MvnAwsCredentialsProvider implements AwsCredentialsProvider, SdkAutoCloseable {
-	
-    private static final MvnAwsCredentialsProvider MVN_CREDENTIALS_PROVIDER = new MvnAwsCredentialsProvider(builder());
 
-    private final LazyAwsCredentialsProvider providerChain;
-	
-    /**
-     * @see #builder()
-     */
-    private MvnAwsCredentialsProvider(Builder builder) {
-        this.providerChain = createChain(builder);
-    }
-    
-    /**
-     * Create an create of the {@link DefaultCredentialsProvider} using the default configuration. Configuration can be
-     * specified by creating an create using the {@link #builder()}.
-     */
-    public static MvnAwsCredentialsProvider create() {
-        return MVN_CREDENTIALS_PROVIDER;
-    }
-    
+	private static final MvnAwsCredentialsProvider MVN_CREDENTIALS_PROVIDER = new MvnAwsCredentialsProvider(builder());
+
+	private final LazyAwsCredentialsProvider providerChain;
+
+	/**
+	 * @see #builder()
+	 */
+	private MvnAwsCredentialsProvider(Builder builder) {
+		this.providerChain = createChain(builder);
+	}
+
+	/**
+	 * Create an create of the {@link DefaultCredentialsProvider} using the default
+	 * configuration. Configuration can be specified by creating an create using the
+	 * {@link #builder()}.
+	 */
+	public static MvnAwsCredentialsProvider create() {
+		return MVN_CREDENTIALS_PROVIDER;
+	}
+
 	/**
 	 * Create the default credential chain using the configuration in the provided
 	 * builder.
@@ -49,99 +50,98 @@ public class MvnAwsCredentialsProvider implements AwsCredentialsProvider, SdkAut
 		boolean reuseLastProviderEnabled = builder.reuseLastProviderEnabled;
 		Optional<AuthenticationInfo> auth = builder.auth;
 
-        return LazyAwsCredentialsProvider.create(() -> {
-            AwsCredentialsProvider[] credentialsProviders = new AwsCredentialsProvider[] {
-                    SystemPropertyCredentialsProvider.create(),
-                    EnvironmentVariableCredentialsProvider.create(),
-                    WebIdentityTokenFileCredentialsProvider.create(),
-                    new AuthenticationInfoWagonCredentialsProvider(auth),
-                    ProfileCredentialsProvider.create(),
-                    ContainerCredentialsProvider.builder()
-                                                .asyncCredentialUpdateEnabled(asyncCredentialUpdateEnabled)
-                                                .build(),
-                    InstanceProfileCredentialsProvider.builder()
-                                                      .asyncCredentialUpdateEnabled(asyncCredentialUpdateEnabled)
-                                                      .build()
-            };
+		return LazyAwsCredentialsProvider.create(() -> {
+			AwsCredentialsProvider[] credentialsProviders = new AwsCredentialsProvider[] {
+					SystemPropertyCredentialsProvider.create(), EnvironmentVariableCredentialsProvider.create(),
+					WebIdentityTokenFileCredentialsProvider.create(),
+					new AuthenticationInfoWagonCredentialsProvider(auth), ProfileCredentialsProvider.create(),
+					ContainerCredentialsProvider.builder().asyncCredentialUpdateEnabled(asyncCredentialUpdateEnabled)
+							.build(),
+					InstanceProfileCredentialsProvider.builder()
+							.asyncCredentialUpdateEnabled(asyncCredentialUpdateEnabled).build() };
 
-            return AwsCredentialsProviderChain.builder()
-                                              .reuseLastProviderEnabled(reuseLastProviderEnabled)
-                                              .credentialsProviders(credentialsProviders)
-                                              .build();
-        });
+			return AwsCredentialsProviderChain.builder().reuseLastProviderEnabled(reuseLastProviderEnabled)
+					.credentialsProviders(credentialsProviders).build();
+		});
 	}
 
-    /**
-     * Get a builder for defining a {@link DefaultCredentialsProvider} with custom configuration.
-     */
-    public static Builder builder() {
-        return new Builder();
-    }
+	/**
+	 * Get a builder for defining a {@link DefaultCredentialsProvider} with custom
+	 * configuration.
+	 */
+	public static Builder builder() {
+		return new Builder();
+	}
 
-    @Override
-    public AwsCredentials resolveCredentials() {
-        return providerChain.resolveCredentials();
-    }
+	@Override
+	public AwsCredentials resolveCredentials() {
+		return providerChain.resolveCredentials();
+	}
 
-    @Override
-    public void close() {
-        providerChain.close();
-    }
+	@Override
+	public void close() {
+		providerChain.close();
+	}
 
-    @Override
-    public String toString() {
-        return ToString.builder("MvnAwsCredentialsProvider")
-                       .add("providerChain", providerChain)
-                       .build();
-    }
-	
-	
-    /**
-     * Configuration that defines the {@link DefaultCredentialsProvider}'s behavior.
-     */
-    public static final class Builder {
-        private Boolean reuseLastProviderEnabled = true;
-        private Boolean asyncCredentialUpdateEnabled = false;
-        Optional<AuthenticationInfo> auth;
+	@Override
+	public String toString() {
+		return ToString.builder("MvnAwsCredentialsProvider").add("providerChain", providerChain).build();
+	}
 
-        /**
-         * Created with {@link #builder()}.
-         */
-        private Builder() {}
+	/**
+	 * Configuration that defines the {@link DefaultCredentialsProvider}'s behavior.
+	 */
+	public static final class Builder {
+		private Boolean reuseLastProviderEnabled = true;
+		private Boolean asyncCredentialUpdateEnabled = false;
+		Optional<AuthenticationInfo> auth;
 
-        /**
-         * Controls whether the provider should reuse the last successful credentials provider in the chain. Reusing the last
-         * successful credentials provider will typically return credentials faster than searching through the chain.
-         *
-         * <p>By default, this is enabled.</p>
-         */
-        public Builder reuseLastProviderEnabled(Boolean reuseLastProviderEnabled) {
-            this.reuseLastProviderEnabled = reuseLastProviderEnabled;
-            return this;
-        }
+		/**
+		 * Created with {@link #builder()}.
+		 */
+		private Builder() {
+		}
 
-        /**
-         * Configure whether this provider should fetch credentials asynchronously in the background. If this is true, threads are
-         * less likely to block when {@link #resolveCredentials()} is called, but additional resources are used to maintain the
-         * provider.
-         *
-         * <p>By default, this is disabled.</p>
-         */
-        public Builder asyncCredentialUpdateEnabled(Boolean asyncCredentialUpdateEnabled) {
-            this.asyncCredentialUpdateEnabled = asyncCredentialUpdateEnabled;
-            return this;
-        }
-        
-        public Builder auth(Optional<AuthenticationInfo> auth) {
-        	this.auth = auth;
-        	return this;
-        }
+		/**
+		 * Controls whether the provider should reuse the last successful credentials
+		 * provider in the chain. Reusing the last successful credentials provider will
+		 * typically return credentials faster than searching through the chain.
+		 *
+		 * <p>
+		 * By default, this is enabled.
+		 * </p>
+		 */
+		public Builder reuseLastProviderEnabled(Boolean reuseLastProviderEnabled) {
+			this.reuseLastProviderEnabled = reuseLastProviderEnabled;
+			return this;
+		}
 
-        /**
-         * Create a {@link DefaultCredentialsProvider} using the configuration defined in this builder.
-         */
-        public MvnAwsCredentialsProvider build() {
-            return new MvnAwsCredentialsProvider(this);
-        }
-    }
+		/**
+		 * Configure whether this provider should fetch credentials asynchronously in
+		 * the background. If this is true, threads are less likely to block when
+		 * {@link #resolveCredentials()} is called, but additional resources are used to
+		 * maintain the provider.
+		 *
+		 * <p>
+		 * By default, this is disabled.
+		 * </p>
+		 */
+		public Builder asyncCredentialUpdateEnabled(Boolean asyncCredentialUpdateEnabled) {
+			this.asyncCredentialUpdateEnabled = asyncCredentialUpdateEnabled;
+			return this;
+		}
+
+		public Builder auth(Optional<AuthenticationInfo> auth) {
+			this.auth = auth;
+			return this;
+		}
+
+		/**
+		 * Create a {@link DefaultCredentialsProvider} using the configuration defined
+		 * in this builder.
+		 */
+		public MvnAwsCredentialsProvider build() {
+			return new MvnAwsCredentialsProvider(this);
+		}
+	}
 }

@@ -161,7 +161,8 @@ public class DeltaUtils {
 
 	public List<BucketSummaryLine> getBucketSummaryLines(List<String> lines) {
 		List<BucketSummaryLine> summaryLines = new ArrayList<BucketSummaryLine>();
-		// Start at 1 instead of zero in order to skip the first line since it is just the column headers
+		// Start at 1 instead of zero in order to skip the first line since it is just
+		// the column headers
 		for (int i = 1; i < lines.size(); i++) {
 			String line = lines.get(i);
 			String[] tokens = line.split(",");

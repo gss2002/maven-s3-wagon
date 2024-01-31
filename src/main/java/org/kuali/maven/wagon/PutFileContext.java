@@ -23,9 +23,9 @@ import org.apache.maven.wagon.resource.Resource;
 import software.amazon.awssdk.services.s3.S3Client;
 import software.amazon.awssdk.transfer.s3.S3TransferManager;
 
-
 /**
- * This is the context needed by the Wagon for uploading a file and tracking its progress as it goes
+ * This is the context needed by the Wagon for uploading a file and tracking its
+ * progress as it goes
  */
 public class PutFileContext {
 	File source;

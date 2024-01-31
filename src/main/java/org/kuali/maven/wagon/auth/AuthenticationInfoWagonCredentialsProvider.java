@@ -54,7 +54,8 @@ public final class AuthenticationInfoWagonCredentialsProvider implements AwsCred
 
 	protected String getAuthenticationErrorMessage() {
 		StringBuffer sb = new StringBuffer();
-		sb.append("The S3 wagon needs AWS Access Key set as the username and AWS Secret Key set as the password. eg:\n");
+		sb.append(
+				"The S3 wagon needs AWS Access Key set as the username and AWS Secret Key set as the password. eg:\n");
 		sb.append("<server>\n");
 		sb.append("  <id>my.server</id>\n");
 		sb.append("  <username>[AWS Access Key ID]</username>\n");

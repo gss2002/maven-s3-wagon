@@ -6,7 +6,8 @@ import java.text.SimpleDateFormat;
 import java.util.Date;
 
 /**
- * Format time, bytes, counts, dates, and transfer rates into human friendly form
+ * Format time, bytes, counts, dates, and transfer rates into human friendly
+ * form
  *
  * @author Jeff Caddel
  * @since May 27, 2010 6:46:17 PM
@@ -49,7 +50,8 @@ public class SimpleFormatter {
 	}
 
 	/**
-	 * Parse a date from the string. The string must be in the same format as what is returned by the getDate() methods
+	 * Parse a date from the string. The string must be in the same format as what
+	 * is returned by the getDate() methods
 	 */
 	public Date parseDate(String date) {
 		try {
@@ -74,8 +76,9 @@ public class SimpleFormatter {
 	}
 
 	/**
-	 * Given a number of bytes and the number of milliseconds it took to transfer that number of bytes, return bytes/s, KB/s, MB/s, GB/s,
-	 * TB/s, PB/s, or EB/s as appropriate
+	 * Given a number of bytes and the number of milliseconds it took to transfer
+	 * that number of bytes, return bytes/s, KB/s, MB/s, GB/s, TB/s, PB/s, or EB/s
+	 * as appropriate
 	 */
 	public String getRate(long millis, long bytes) {
 		double seconds = millis / SECOND;
@@ -93,8 +96,10 @@ public class SimpleFormatter {
 	}
 
 	/**
-	 * Given milliseconds, return milliseconds, seconds, minutes, hours, days, years, decades, or centuries as appropriate. Note that years,
-	 * decades, and centuries are approximations since the logic always assumes there are exactly 365 days per year.
+	 * Given milliseconds, return milliseconds, seconds, minutes, hours, days,
+	 * years, decades, or centuries as appropriate. Note that years, decades, and
+	 * centuries are approximations since the logic always assumes there are exactly
+	 * 365 days per year.
 	 */
 	public String getTime(long millis) {
 		long abs = Math.abs(millis);
@@ -118,14 +123,16 @@ public class SimpleFormatter {
 	}
 
 	/**
-	 * Given a number of bytes return bytes, kilobytes, megabytes, gigabytes, terabytes, petabytes, or exabytes as appropriate.
+	 * Given a number of bytes return bytes, kilobytes, megabytes, gigabytes,
+	 * terabytes, petabytes, or exabytes as appropriate.
 	 */
 	public String getSize(long bytes) {
 		return getSize(bytes, null);
 	}
 
 	/**
-	 * Given a number of bytes return a string formatted into the unit of measure indicated
+	 * Given a number of bytes return a string formatted into the unit of measure
+	 * indicated
 	 */
 	public String getSize(long bytes, Size unitOfMeasure) {
 		unitOfMeasure = (unitOfMeasure == null) ? getSizeEnum(bytes) : unitOfMeasure;

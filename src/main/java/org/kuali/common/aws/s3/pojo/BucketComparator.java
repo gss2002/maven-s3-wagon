@@ -19,7 +19,6 @@ import java.util.Comparator;
 
 import software.amazon.awssdk.services.s3.model.Bucket;
 
-
 public class BucketComparator implements Comparator<Bucket> {
 
 	@Override

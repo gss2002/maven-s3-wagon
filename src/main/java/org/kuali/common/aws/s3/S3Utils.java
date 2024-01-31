@@ -27,8 +27,6 @@ import org.kuali.common.aws.s3.pojo.S3PrefixContext;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-
-
 import software.amazon.awssdk.auth.credentials.AwsBasicCredentials;
 import software.amazon.awssdk.auth.credentials.AwsCredentials;
 import software.amazon.awssdk.auth.credentials.StaticCredentialsProvider;
@@ -81,19 +79,21 @@ public class S3Utils {
 	}
 
 	/**
-	 * Upload a single file to Amazon S3. If the file is larger than <code>MULTI_PART_UPLOAD_THRESHOLD</code> a multi-part upload is used.
-	 * Multi-part uploads split the file into several smaller chunks with each chunk being uploaded in a different thread. Once all the
-	 * threads have completed the file is automatically reassembled on S3 as a single file.
+	 * Upload a single file to Amazon S3. If the file is larger than
+	 * <code>MULTI_PART_UPLOAD_THRESHOLD</code> a multi-part upload is used.
+	 * Multi-part uploads split the file into several smaller chunks with each chunk
+	 * being uploaded in a different thread. Once all the threads have completed the
+	 * file is automatically reassembled on S3 as a single file.
 	 */
 	public void upload(File file, PutObjectRequest request, S3Client client, S3TransferManager manager) {
 		// Store the file on S3
 		if (file.length() < MULTI_PART_UPLOAD_THRESHOLD) {
 			// Use normal upload for small files
 			PutObjectResponse putresp = client.putObject(request, RequestBody.fromFile(file));
-			log.info("AWSRequestIdPut: "+putresp.responseMetadata().requestId());
-			log.info("PutResp.isSuccessful: "+putresp.sdkHttpResponse().isSuccessful());
-			log.info("PutResp.statusCode: "+putresp.sdkHttpResponse().statusCode());
-			log.info("PutResp.statusText: "+putresp.sdkHttpResponse().statusText());
+			log.debug("AWSRequestIdPut: " + putresp.responseMetadata().requestId());
+			log.debug("PutResp.isSuccessful: " + putresp.sdkHttpResponse().isSuccessful());
+			log.debug("PutResp.statusCode: " + putresp.sdkHttpResponse().statusCode());
+			log.debug("PutResp.statusText: " + putresp.sdkHttpResponse().statusText());
 
 		} else {
 			log.debug("Blocking multi-part upload: " + file.getAbsolutePath());
@@ -103,26 +103,37 @@ public class S3Utils {
 	}
 
 	/**
-	 * Use this method to reliably upload large files and wait until they are fully uploaded before continuing. Behind the scenes this is
-	 * accomplished by splitting the file up into manageable chunks and using separate threads to upload each chunk. Consider using
-	 * multi-part uploads on files larger than <code>MULTI_PART_UPLOAD_THRESHOLD</code>. When this method returns, all threads have finished
-	 * and the file has been reassembled on S3. The benefit to this method is that if any one thread fails, only the portion of the file
-	 * that particular thread was handling will have to be re-uploaded (instead of the entire file). A reasonable number of automatic
-	 * retries occurs if an individual upload thread fails. If the file upload fails this method throws <code>AmazonS3Exception</code>
+	 * Use this method to reliably upload large files and wait until they are fully
+	 * uploaded before continuing. Behind the scenes this is accomplished by
+	 * splitting the file up into manageable chunks and using separate threads to
+	 * upload each chunk. Consider using multi-part uploads on files larger than
+	 * <code>MULTI_PART_UPLOAD_THRESHOLD</code>. When this method returns, all
+	 * threads have finished and the file has been reassembled on S3. The benefit to
+	 * this method is that if any one thread fails, only the portion of the file
+	 * that particular thread was handling will have to be re-uploaded (instead of
+	 * the entire file). A reasonable number of automatic retries occurs if an
+	 * individual upload thread fails. If the file upload fails this method throws
+	 * <code>AmazonS3Exception</code>
 	 */
 	public void blockingMultiPartUpload(PutObjectRequest request, S3TransferManager manager) {
 		// Use multi-part upload for large files
 		Upload upload = manager.upload(UploadRequest.builder().putObjectRequest(request).build());
 		try {
 			// Block and wait for the upload to finish
-			upload.completionFuture().get().response();
+			PutObjectResponse putresp = upload.completionFuture().get().response();
+			log.debug("BlockingMultiPart-AWSRequestIdPut: " + putresp.responseMetadata().requestId());
+			log.debug("BlockingMultiPart-PutResp.isSuccessful: " + putresp.sdkHttpResponse().isSuccessful());
+			log.debug("BlockingMultiPart-PutResp.statusCode: " + putresp.sdkHttpResponse().statusCode());
+			log.debug("BlockingMultiPart-PutResp.statusText: " + putresp.sdkHttpResponse().statusText());
 		} catch (Exception e) {
 			throw S3Exception.create("Unexpected error uploading file", e);
 		}
 	}
 
-	public ListObjectsV2Request getListObjectsRequest(String bucketName, String prefix, String delimiter, Integer maxKeys) {
-		ListObjectsV2Request request = ListObjectsV2Request.builder().bucket(bucketName).delimiter(delimiter).prefix(prefix).maxKeys(maxKeys).build();
+	public ListObjectsV2Request getListObjectsRequest(String bucketName, String prefix, String delimiter,
+			Integer maxKeys) {
+		ListObjectsV2Request request = ListObjectsV2Request.builder().bucket(bucketName).delimiter(delimiter)
+				.prefix(prefix).maxKeys(maxKeys).build();
 		return request;
 	}
 
@@ -177,7 +188,8 @@ public class S3Utils {
 		return sb.toString();
 	}
 
-	public void buildPrefixList(S3Client client, String bucketName, List<String> prefixes, String prefix, String delimiter, BaseCase baseCase) {
+	public void buildPrefixList(S3Client client, String bucketName, List<String> prefixes, String prefix,
+			String delimiter, BaseCase baseCase) {
 		log.info(prefix);
 		prefixes.add(prefix);
 		ListObjectsV2Request request = getListObjectsRequest(bucketName, prefix, delimiter);
@@ -244,7 +256,8 @@ public class S3Utils {
 		return summary;
 	}
 
-	public AccountSummary getAccountSummary(String accessKey, String secretKey, List<String> includes, List<String> excludes) {
+	public AccountSummary getAccountSummary(String accessKey, String secretKey, List<String> includes,
+			List<String> excludes) {
 		AccountSummaryContext context = new AccountSummaryContext();
 		context.setAccessKey(accessKey);
 		context.setSecretKey(secretKey);
@@ -268,57 +281,51 @@ public class S3Utils {
 	}
 
 	public BucketSummary getBucketSummary(S3Client client, Bucket bucket) {
-        boolean done = false;
+		boolean done = false;
 		BucketSummary summary = new BucketSummary();
 		summary.setBucket(bucket);
 		ListObjectsV2Request request = getListObjectsRequest(bucket.name());
 		while (!done) {
 			ListObjectsV2Response current = client.listObjectsV2(request);
 			updateBucketSummary(summary, current.contents());
-            if (current.nextContinuationToken() == null) {
-                done = true;
-            } else {
-            	request = request.toBuilder()
-                            .continuationToken(current.nextContinuationToken())
-                            .build();     
-            }
+			if (current.nextContinuationToken() == null) {
+				done = true;
+			} else {
+				request = request.toBuilder().continuationToken(current.nextContinuationToken()).build();
+			}
 		}
 		log.debug("Completed summary for '{}'", bucket.name());
 		return summary;
 	}
 
 	public BucketPrefixSummary summarize(S3Client client, String bucketName) {
-        boolean done = false;
+		boolean done = false;
 		BucketPrefixSummary summary = new BucketPrefixSummary();
 		ListObjectsV2Request request = getListObjectsRequest(bucketName);
-        while (!done) {
-    		ListObjectsV2Response current = client.listObjectsV2(request);
+		while (!done) {
+			ListObjectsV2Response current = client.listObjectsV2(request);
 			summarize(summary, current.contents());
-            if (current.nextContinuationToken() == null) {
-                done = true;
-            } else {
-            	request = request.toBuilder()
-                            .continuationToken(current.nextContinuationToken())
-                            .build();     
-            }
+			if (current.nextContinuationToken() == null) {
+				done = true;
+			} else {
+				request = request.toBuilder().continuationToken(current.nextContinuationToken()).build();
+			}
 		}
 		log.debug("Completed summary for '{}'", bucketName);
 		return summary;
 	}
 
 	public BucketPrefixSummary summarize(S3Client client, String bucketName, BucketPrefixSummary summary) {
-        boolean done = false;
+		boolean done = false;
 		ListObjectsV2Request request = getListObjectsRequest(bucketName, summary.getPrefix());
-        while (!done) {
-    		ListObjectsV2Response current = client.listObjectsV2(request);
+		while (!done) {
+			ListObjectsV2Response current = client.listObjectsV2(request);
 			summarize(summary, current.contents());
-            if (current.nextContinuationToken() == null) {
-                done = true;
-            } else {
-            	request = request.toBuilder()
-                            .continuationToken(current.nextContinuationToken())
-                            .build();     
-            }
+			if (current.nextContinuationToken() == null) {
+				done = true;
+			} else {
+				request = request.toBuilder().continuationToken(current.nextContinuationToken()).build();
+			}
 		}
 		log.debug("Completed summary for prefix '{}'", summary.getPrefix());
 		return summary;
@@ -343,7 +350,8 @@ public class S3Utils {
 			String prefix = summary.getPrefix();
 			long count = summary.getCount();
 			long bytes = summary.getSize();
-			log.debug(rpad(prefix, 40) + " Total Count: " + lpad(count + "", 3) + " Total Size: " + lpad(formatter.getSize(bytes), 9));
+			log.debug(rpad(prefix, 40) + " Total Count: " + lpad(count + "", 3) + " Total Size: "
+					+ lpad(formatter.getSize(bytes), 9));
 		}
 	}
 
@@ -359,7 +367,8 @@ public class S3Utils {
 		return toString(node, null, comparator);
 	}
 
-	public List<BucketPrefixSummary> getBucketSummaryList(DefaultMutableTreeNode node, Comparator<BucketPrefixSummary> comparator) {
+	public List<BucketPrefixSummary> getBucketSummaryList(DefaultMutableTreeNode node,
+			Comparator<BucketPrefixSummary> comparator) {
 		List<BucketPrefixSummary> list = new ArrayList<BucketPrefixSummary>();
 		Enumeration<?> e = node.breadthFirstEnumeration();
 		while (e.hasMoreElements()) {
@@ -387,7 +396,8 @@ public class S3Utils {
 		return list;
 	}
 
-	public List<S3PrefixContext> getS3PrefixContexts(S3Client client, String bucketName, List<BucketPrefixSummary> summaries) {
+	public List<S3PrefixContext> getS3PrefixContexts(S3Client client, String bucketName,
+			List<BucketPrefixSummary> summaries) {
 		List<S3PrefixContext> contexts = new ArrayList<S3PrefixContext>();
 		for (BucketPrefixSummary summary : summaries) {
 			S3PrefixContext context = new S3PrefixContext();
@@ -411,7 +421,8 @@ public class S3Utils {
 			maxSizeLength = Math.max(maxSizeLength, display.getSize().length());
 		}
 		StringBuilder sb = new StringBuilder();
-		sb.append(rpad(PREFIX, maxPrefixLength) + " " + lpad(COUNT, maxCountLength) + " " + lpad(SIZE, maxSizeLength) + "\n");
+		sb.append(rpad(PREFIX, maxPrefixLength) + " " + lpad(COUNT, maxCountLength) + " " + lpad(SIZE, maxSizeLength)
+				+ "\n");
 		for (BucketDisplay display : list) {
 			sb.append(rpad(display.getPrefix(), maxPrefixLength));
 			sb.append(" ");

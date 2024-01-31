@@ -23,7 +23,6 @@ import software.amazon.awssdk.services.s3.S3Client;
 import software.amazon.awssdk.services.s3.model.PutObjectRequest;
 import software.amazon.awssdk.transfer.s3.S3TransferManager;
 
-
 public class FileHandler implements ElementHandler<PutFileContext> {
 
 	public void handleElement(ListIteratorContext<PutFileContext> context, int index, PutFileContext element) {

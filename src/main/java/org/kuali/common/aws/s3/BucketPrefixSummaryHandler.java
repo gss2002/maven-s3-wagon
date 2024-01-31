@@ -22,7 +22,6 @@ import org.kuali.common.threads.ListIteratorContext;
 
 import software.amazon.awssdk.services.s3.S3Client;
 
-
 public class BucketPrefixSummaryHandler implements ElementHandler<S3PrefixContext> {
 
 	public void handleElement(ListIteratorContext<S3PrefixContext> context, int index, S3PrefixContext element) {

@@ -64,7 +64,7 @@ public class TransferTracker {
 	}
 
 	@Override
-    public String toString() {
+	public String toString() {
 		long elapsed = completed - started;
 		StringBuffer sb = new StringBuffer();
 		sb.append("[" + formatter.getTime(elapsed));

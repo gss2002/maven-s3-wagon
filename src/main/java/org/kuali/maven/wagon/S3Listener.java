@@ -27,7 +27,8 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * Listen for events about the transfer and record timing and byte count information
+ * Listen for events about the transfer and record timing and byte count
+ * information
  *
  * @author Jeff Caddel
  * @since May 27, 2010 5:08:12 PM
@@ -101,7 +102,8 @@ public class S3Listener implements TransferListener, SessionListener {
 	public void sessionOpened(final SessionEvent sessionEvent) {
 		sessionTracker.addSessionEvent(sessionEvent);
 		sessionTracker.setOpened(System.currentTimeMillis());
-		// log(sessionEvent.getWagon().getRepository().getUrl() + " - Session: Opened  ");
+		// log(sessionEvent.getWagon().getRepository().getUrl() + " - Session: Opened
+		// ");
 	}
 
 	/**
@@ -110,7 +112,8 @@ public class S3Listener implements TransferListener, SessionListener {
 	public void sessionDisconnecting(final SessionEvent sessionEvent) {
 		sessionTracker.addSessionEvent(sessionEvent);
 		sessionTracker.setDisconnecting(System.currentTimeMillis());
-		// log(sessionEvent.getWagon().getRepository().getUrl() + " - Session: Disconnecting  ");
+		// log(sessionEvent.getWagon().getRepository().getUrl() + " - Session:
+		// Disconnecting ");
 	}
 
 	/**

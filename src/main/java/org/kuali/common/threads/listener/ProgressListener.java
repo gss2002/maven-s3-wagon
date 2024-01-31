@@ -22,23 +22,22 @@ package org.kuali.common.threads.listener;
  */
 public interface ProgressListener<T> {
 
-    /**
-     * Progress has begun
-     */
-    void progressStarted();
+	/**
+	 * Progress has begun
+	 */
+	void progressStarted();
 
-    /**
-     * Progress towards the total has occurred
-     *
-     * @param count
-     * @param total
-     * @param event
-     */
-    void progressOccurred(int count, int total, ProgressEvent<T> event);
+	/**
+	 * Progress towards the total has occurred
+	 *
+	 * @param count
+	 * @param total
+	 * @param event
+	 */
+	void progressOccurred(int count, int total, ProgressEvent<T> event);
 
-    /**
-     * Progress is now complete
-     */
-    void progressCompleted();
+	/**
+	 * Progress is now complete
+	 */
+	void progressCompleted();
 }
-

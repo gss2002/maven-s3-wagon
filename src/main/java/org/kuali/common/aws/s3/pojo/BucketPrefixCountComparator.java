@@ -17,7 +17,6 @@ package org.kuali.common.aws.s3.pojo;
 
 import java.util.Comparator;
 
-
 public class BucketPrefixCountComparator implements Comparator<BucketPrefixSummary> {
 
 	public int compare(BucketPrefixSummary one, BucketPrefixSummary two) {

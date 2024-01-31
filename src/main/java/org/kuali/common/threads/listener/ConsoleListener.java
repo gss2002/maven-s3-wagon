@@ -24,64 +24,63 @@ import java.io.PrintStream;
  */
 public class ConsoleListener<T> implements ProgressListener<T> {
 
-    PrintStream out = System.out;
-    String startToken = ".";
-    String completeToken = ".";
-    String progressToken = ".";
+	PrintStream out = System.out;
+	String startToken = ".";
+	String completeToken = ".";
+	String progressToken = ".";
 
-    public ConsoleListener() {
-        this(".", ".");
-    }
+	public ConsoleListener() {
+		this(".", ".");
+	}
 
-    public ConsoleListener(String startToken, String completeToken) {
-        super();
-        this.startToken = startToken;
-        this.completeToken = completeToken;
-    }
+	public ConsoleListener(String startToken, String completeToken) {
+		super();
+		this.startToken = startToken;
+		this.completeToken = completeToken;
+	}
 
-    public void progressCompleted() {
-        out.print(completeToken);
-    }
+	public void progressCompleted() {
+		out.print(completeToken);
+	}
 
-    public void progressStarted() {
-        out.print(startToken);
-    }
+	public void progressStarted() {
+		out.print(startToken);
+	}
 
-    public void progressOccurred(int count, int total, ProgressEvent<T> event) {
-        out.print(progressToken);
-    }
+	public void progressOccurred(int count, int total, ProgressEvent<T> event) {
+		out.print(progressToken);
+	}
 
-    public PrintStream getOut() {
-        return out;
-    }
+	public PrintStream getOut() {
+		return out;
+	}
 
-    public void setOut(PrintStream out) {
-        this.out = out;
-    }
+	public void setOut(PrintStream out) {
+		this.out = out;
+	}
 
-    public String getStartToken() {
-        return startToken;
-    }
+	public String getStartToken() {
+		return startToken;
+	}
 
-    public void setStartToken(String startToken) {
-        this.startToken = startToken;
-    }
+	public void setStartToken(String startToken) {
+		this.startToken = startToken;
+	}
 
-    public String getCompleteToken() {
-        return completeToken;
-    }
+	public String getCompleteToken() {
+		return completeToken;
+	}
 
-    public void setCompleteToken(String completeToken) {
-        this.completeToken = completeToken;
-    }
+	public void setCompleteToken(String completeToken) {
+		this.completeToken = completeToken;
+	}
 
-    public String getProgressToken() {
-        return progressToken;
-    }
+	public String getProgressToken() {
+		return progressToken;
+	}
 
-    public void setProgressToken(String progressToken) {
-        this.progressToken = progressToken;
-    }
+	public void setProgressToken(String progressToken) {
+		this.progressToken = progressToken;
+	}
 
 }
-

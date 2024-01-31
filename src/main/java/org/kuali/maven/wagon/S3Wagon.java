@@ -37,6 +37,7 @@ import org.apache.maven.wagon.authentication.AuthenticationInfo;
 import org.apache.maven.wagon.proxy.ProxyInfo;
 import org.apache.maven.wagon.repository.Repository;
 import org.apache.maven.wagon.repository.RepositoryPermissions;
+import org.kuali.common.aws.s3.AWSHostNameUtils;
 import org.kuali.common.aws.s3.S3Utils;
 import org.kuali.common.aws.s3.SimpleFormatter;
 import org.kuali.common.threads.ExecutionStatistics;
@@ -46,7 +47,6 @@ import org.kuali.common.threads.listener.PercentCompleteListener;
 import org.kuali.maven.wagon.auth.MvnAwsCredentialsProvider;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-
 
 import com.google.common.base.Optional;
 
@@ -60,6 +60,7 @@ import software.amazon.awssdk.core.internal.http.AmazonSyncHttpClient;
 import software.amazon.awssdk.core.internal.util.Mimetype;
 import software.amazon.awssdk.core.io.ResettableInputStream;
 import software.amazon.awssdk.http.apache.ApacheHttpClient;
+import software.amazon.awssdk.http.nio.netty.NettyNioAsyncHttpClient;
 import software.amazon.awssdk.regions.Region;
 import software.amazon.awssdk.services.s3.S3AsyncClient;
 import software.amazon.awssdk.services.s3.S3AsyncClientBuilder;
@@ -116,7 +117,7 @@ public class S3Wagon extends AbstractWagon implements RequestFactory {
 	public static final String VPC_ENDPOINT_KEY = "maven.wagon.s3.vpce";
 	public static final String REGION = "maven.wagon.s3.region";
 	public static final String AWS_S3_DEFAULT_REGION = "us-east-2";
-	
+
 	public static final String HTTPS = "https";
 	public static final String MIN_THREADS_KEY = "maven.wagon.threads.min";
 	public static final String MAX_THREADS_KEY = "maven.wagon.threads.max";
@@ -131,12 +132,12 @@ public class S3Wagon extends AbstractWagon implements RequestFactory {
 	private static final String TEMP_DIR_PATH = TEMP_DIR.getAbsolutePath();
 	private static final String SDK_REGION_CHAIN_IN_USE = "S3 client is using the SDK region chaining resolution.";
 	private static final String S3_SERVICE_NAME = "s3";
-	
-    public static final int NO_SUCH_BUCKET_STATUS_CODE = 404;
 
-    public static final int BUCKET_ACCESS_FORBIDDEN_STATUS_CODE = 403;
+	public static final int NO_SUCH_BUCKET_STATUS_CODE = 404;
 
-    public static final int BUCKET_REDIRECT_STATUS_CODE = 301;
+	public static final int BUCKET_ACCESS_FORBIDDEN_STATUS_CODE = 403;
+
+	public static final int BUCKET_REDIRECT_STATUS_CODE = 301;
 
 	ThreadInvoker invoker = new ThreadInvoker();
 	SimpleFormatter formatter = new SimpleFormatter();
@@ -169,7 +170,7 @@ public class S3Wagon extends AbstractWagon implements RequestFactory {
 
 	protected void validateBucket(S3Client client, String bucketName) {
 		log.debug("Looking for bucket: " + bucketName);
-		if(doesBucketExistV2(client, bucketName)) {
+		if (doesBucketExistV2(client, bucketName)) {
 			log.debug("Found bucket '" + bucketName + "' Validating permissions");
 			validatePermissions(client, bucketName);
 		} else {
@@ -179,35 +180,38 @@ public class S3Wagon extends AbstractWagon implements RequestFactory {
 			client.createBucket(CreateBucketRequest.builder().bucket(bucketName).build());
 		}
 	}
-	
-    public boolean doesBucketExistV2(S3Client client, String bucketName) throws SdkClientException {
-        try {
-            Validate.notEmpty(bucketName, "bucketName");
-            client.getBucketAcl(GetBucketAclRequest.builder().bucket(bucketName).build());
-            return true;
-        } catch (AwsServiceException ase) {
-            // A redirect error or an AccessDenied exception means the bucket exists but it's not in this region
-            // or we don't have permissions to it.
-            if ((ase.statusCode() == BUCKET_REDIRECT_STATUS_CODE) || "AccessDenied".equals(ase.awsErrorDetails().errorCode())) {
-                return true;
-            }
-            if (ase.statusCode() == NO_SUCH_BUCKET_STATUS_CODE) {
-                return false;
-            }
-            throw ase;
-        }
-    }
+
+	public boolean doesBucketExistV2(S3Client client, String bucketName) throws SdkClientException {
+		try {
+			Validate.notEmpty(bucketName, "bucketName");
+			client.getBucketAcl(GetBucketAclRequest.builder().bucket(bucketName).build());
+			return true;
+		} catch (AwsServiceException ase) {
+			// A redirect error or an AccessDenied exception means the bucket exists but
+			// it's not in this region
+			// or we don't have permissions to it.
+			if ((ase.statusCode() == BUCKET_REDIRECT_STATUS_CODE)
+					|| "AccessDenied".equals(ase.awsErrorDetails().errorCode())) {
+				return true;
+			}
+			if (ase.statusCode() == NO_SUCH_BUCKET_STATUS_CODE) {
+				return false;
+			}
+			throw ase;
+		}
+	}
 
 	/**
 	 * Establish that we have enough permissions on this bucket to do what we need
 	 * to do
 	 * 
-	 * @param client    S3 Client
+	 * @param client     S3 Client
 	 * @param bucketName AWS S3 Bucket Name.
 	 */
 	protected void validatePermissions(S3Client client, String bucketName) {
 		// This establishes our ability to list objects in this bucket
-		ListObjectsRequest zeroObjectsRequest = ListObjectsRequest.builder().bucket(bucketName).delimiter(null).prefix(null).maxKeys(0).marker(null).build();
+		ListObjectsRequest zeroObjectsRequest = ListObjectsRequest.builder().bucket(bucketName).delimiter(null)
+				.prefix(null).maxKeys(0).marker(null).build();
 		client.listObjects(zeroObjectsRequest);
 
 		/**
@@ -240,166 +244,172 @@ public class S3Wagon extends AbstractWagon implements RequestFactory {
 		return ObjectCannedACL.valueOf(filePermissions.trim());
 	}
 
-
 	protected S3Client getAmazonS3Client(AwsCredentialsProvider credentials) {
 		S3ClientBuilder builder = S3Client.builder();
 		builder.credentialsProvider(credentials);
-		ClientOverrideConfiguration clientOverride = ClientOverrideConfiguration.builder().apiCallTimeout(Duration.ofMillis(readTimeout)).apiCallAttemptTimeout(Duration.ofMillis(readTimeout)).build();
+		ClientOverrideConfiguration clientOverride = ClientOverrideConfiguration.builder()
+				.apiCallTimeout(Duration.ofMillis(readTimeout)).apiCallAttemptTimeout(Duration.ofMillis(readTimeout))
+				.build();
 		builder.overrideConfiguration(clientOverride);
-		ApacheHttpClient.Builder httpClientBuilder =
-				ApacheHttpClient.builder().connectionTimeout(Duration.ofMillis(readTimeout)).connectionTimeToLive(Duration.ofMillis(readTimeout)).socketTimeout(Duration.ofMillis(readTimeout));
+		ApacheHttpClient.Builder httpClientBuilder = ApacheHttpClient.builder()
+				.connectionTimeout(Duration.ofMillis(readTimeout)).connectionTimeToLive(Duration.ofMillis(readTimeout))
+				.socketTimeout(Duration.ofMillis(readTimeout));
 		builder.httpClientBuilder(httpClientBuilder);
 		builder.forcePathStyle(false);
-	    if (!(getVpce().isEmpty())) {
-	    	configureEndpoint(builder);
-	    }
+		if (!(getVpce().isEmpty())) {
+			configureEndpoint(builder);
+		}
 		S3Client client = builder.build();
 		return client;
 	}
-	
+
 	protected S3AsyncClient getAmazonS3AsyncClient(AwsCredentialsProvider credentials) {
 		S3AsyncClientBuilder builder = S3AsyncClient.builder();
 		builder.credentialsProvider(credentials);
 		builder.forcePathStyle(false);
-		ClientOverrideConfiguration clientOverride = ClientOverrideConfiguration.builder().apiCallTimeout(Duration.ofMillis(readTimeout)).apiCallAttemptTimeout(Duration.ofMillis(readTimeout)).build();
+		ClientOverrideConfiguration clientOverride = ClientOverrideConfiguration.builder()
+				.apiCallTimeout(Duration.ofMillis(readTimeout)).apiCallAttemptTimeout(Duration.ofMillis(readTimeout))
+				.build();
 		builder.overrideConfiguration(clientOverride);
-	    if (!(getVpce().isEmpty())) {
-	    	configureAsyncEndpoint(builder);
-	    }
+		NettyNioAsyncHttpClient.Builder httpClientBuilder = NettyNioAsyncHttpClient.builder();
+		httpClientBuilder.connectionTimeout(Duration.ofMillis(readTimeout))
+				.connectionTimeToLive(Duration.ofMillis(readTimeout)).readTimeout(Duration.ofMillis(readTimeout))
+				.writeTimeout(Duration.ofMillis(readTimeout));
+		builder.httpClientBuilder(httpClientBuilder);
+		if (!(getVpce().isEmpty())) {
+			configureAsyncEndpoint(builder);
+		}
 		S3AsyncClient aClient = builder.build();
 		return aClient;
 	}
 
 	public void configureEndpoint(S3ClientBuilder builder) {
 		URI endpoint = getS3Endpoint(getVpce());
-	    String configuredRegion = getRegion();
-	    Region region = null;
-	    
-	    
+		String configuredRegion = getRegion();
+		Region region = null;
 
-	    // If the region was configured, set it.
-	    if (configuredRegion != null && !configuredRegion.isEmpty()) {
-	      region = Region.of(configuredRegion);
-	    }
-	    
-	    if (endpoint != null) {
-	        builder.endpointOverride(endpoint);
-	        // No region was configured, try to determine it from the endpoint.
-	        if (region == null) {
-	          region = getS3RegionFromEndpoint(getVpce());
-	        }
-	        log.debug("Setting endpoint to {}", endpoint);
-	      }	    
-	    
-	    if (region != null) {
-	        builder.region(region);
-	      } else if (configuredRegion == null) {
-	        // no region is configured, and none could be determined from the endpoint.
-	        // Use US_EAST_2 as default.
-	        region = Region.of(AWS_S3_DEFAULT_REGION);
-	        builder.crossRegionAccessEnabled(true);
-	        builder.region(region);
-	      } else if (configuredRegion.isEmpty()) {
-	        // region configuration was set to empty string.
-	        // allow this if people really want it; it is OK to rely on this
-	        // when deployed in EC2.
-	        log.warn(SDK_REGION_CHAIN_IN_USE);
-	        log.debug(SDK_REGION_CHAIN_IN_USE);
-	      }
+		// If the region was configured, set it.
+		if (configuredRegion != null && !configuredRegion.isEmpty()) {
+			region = Region.of(configuredRegion);
+		}
 
-	      log.debug("Setting region to {}", region);
-	 
+		if (endpoint != null) {
+			builder.endpointOverride(endpoint);
+			// No region was configured, try to determine it from the endpoint.
+			if (region == null) {
+				region = getS3RegionFromEndpoint(getVpce());
+			}
+			log.debug("Setting endpoint to {}", endpoint);
+		}
+
+		if (region != null) {
+			builder.region(region);
+		} else if (configuredRegion == null) {
+			// no region is configured, and none could be determined from the endpoint.
+			// Use US_EAST_2 as default.
+			region = Region.of(AWS_S3_DEFAULT_REGION);
+			builder.crossRegionAccessEnabled(true);
+			builder.region(region);
+		} else if (configuredRegion.isEmpty()) {
+			// region configuration was set to empty string.
+			// allow this if people really want it; it is OK to rely on this
+			// when deployed in EC2.
+			log.warn(SDK_REGION_CHAIN_IN_USE);
+			log.debug(SDK_REGION_CHAIN_IN_USE);
+		}
+
+		log.debug("Setting region to {}", region);
+
 	}
-	
+
 	public void configureAsyncEndpoint(S3AsyncClientBuilder builder) {
 		URI endpoint = getS3Endpoint(getVpce());
-	    String configuredRegion = getRegion();
-	    Region region = null;
+		String configuredRegion = getRegion();
+		Region region = null;
 
-	    // If the region was configured, set it.
-	    if (configuredRegion != null && !configuredRegion.isEmpty()) {
-	      region = Region.of(configuredRegion);
-	    }
-	    
-	    if (endpoint != null) {
-	        builder.endpointOverride(endpoint);
-	        // No region was configured, try to determine it from the endpoint.
-	        if (region == null) {
-	          region = getS3RegionFromEndpoint(getVpce());
-	        }
-	        log.debug("Setting endpoint to {}", endpoint);
-	      }	    
-	    
-	    if (region != null) {
-	        builder.region(region);
-	      } else if (configuredRegion == null) {
-	        // no region is configured, and none could be determined from the endpoint.
-	        // Use US_EAST_2 as default.
-	        region = Region.of(AWS_S3_DEFAULT_REGION);
-	        builder.crossRegionAccessEnabled(true);
-	        builder.region(region);
-	      } else if (configuredRegion.isEmpty()) {
-	        // region configuration was set to empty string.
-	        // allow this if people really want it; it is OK to rely on this
-	        // when deployed in EC2.
-	        log.warn(SDK_REGION_CHAIN_IN_USE);
-	        log.debug(SDK_REGION_CHAIN_IN_USE);
-	      }
+		// If the region was configured, set it.
+		if (configuredRegion != null && !configuredRegion.isEmpty()) {
+			region = Region.of(configuredRegion);
+		}
 
-	      log.debug("Setting region to {}", region);
-	 
+		if (endpoint != null) {
+			builder.endpointOverride(endpoint);
+			// No region was configured, try to determine it from the endpoint.
+			if (region == null) {
+				region = getS3RegionFromEndpoint(getVpce());
+			}
+			log.debug("Setting endpoint to {}", endpoint);
+		}
+
+		if (region != null) {
+			builder.region(region);
+		} else if (configuredRegion == null) {
+			// no region is configured, and none could be determined from the endpoint.
+			// Use US_EAST_2 as default.
+			region = Region.of(AWS_S3_DEFAULT_REGION);
+			builder.crossRegionAccessEnabled(true);
+			builder.region(region);
+		} else if (configuredRegion.isEmpty()) {
+			// region configuration was set to empty string.
+			// allow this if people really want it; it is OK to rely on this
+			// when deployed in EC2.
+			log.warn(SDK_REGION_CHAIN_IN_USE);
+			log.debug(SDK_REGION_CHAIN_IN_USE);
+		}
+
+		log.debug("Setting region to {}", region);
+
 	}
 
-	
-	  /**
-	   * Given a endpoint string, create the endpoint URI.
-	   *
-	   * @param endpoint possibly null endpoint.
-	   * @param conf config to build the URI from.
-	   * @return an endpoint uri
-	   */
-	  private static URI getS3Endpoint(String endpoint) {
+	/**
+	 * Given a endpoint string, create the endpoint URI.
+	 *
+	 * @param endpoint possibly null endpoint.
+	 * @param conf     config to build the URI from.
+	 * @return an endpoint uri
+	 */
+	private static URI getS3Endpoint(String endpoint) {
 
-	    boolean secureConnections = true;
-	    if (PROTOCOL_KEY.equalsIgnoreCase("http")) {
-	    	secureConnections=false;
-	    }
+		boolean secureConnections = true;
+		if (PROTOCOL_KEY.equalsIgnoreCase("http")) {
+			secureConnections = false;
+		}
 
-	    String protocol = secureConnections ? "https" : "http";
+		String protocol = secureConnections ? "https" : "http";
 
-	    if (endpoint == null || endpoint.isEmpty()) {
-	      // don't set an endpoint if none is configured, instead let the SDK figure it out.
-	      return null;
-	    }
+		if (endpoint == null || endpoint.isEmpty()) {
+			// don't set an endpoint if none is configured, instead let the SDK figure it
+			// out.
+			return null;
+		}
 
-	    if (!endpoint.contains("://")) {
-	      endpoint = String.format("%s://%s", protocol, endpoint);
-	    }
+		if (!endpoint.contains("://")) {
+			endpoint = String.format("%s://%s", protocol, endpoint);
+		}
 
-	    try {
-	      return new URI(endpoint);
-	    } catch (URISyntaxException e) {
-	      throw new IllegalArgumentException(e);
-	    }
-	  }
-	  
-	  /**
-	   * Parses the endpoint to get the region.
-	   * If endpoint is the central one, use US_EAST_1.
-	   *
-	   * @param endpoint the configure endpoint.
-	   * @return the S3 region, null if unable to resolve from endpoint.
-	   */
-	  private Region getS3RegionFromEndpoint(String endpoint) {
+		try {
+			return new URI(endpoint);
+		} catch (URISyntaxException e) {
+			throw new IllegalArgumentException(e);
+		}
+	}
 
-	    if(!endpoint.endsWith(CENTRAL_ENDPOINT)) {
-	      log.debug("Endpoint {} is not the default; parsing", endpoint);
-	      return AwsHostNameUtils.parseSigningRegion(endpoint, S3_SERVICE_NAME).orElse(null);
-	    }
+	/**
+	 * Parses the endpoint to get the region. If endpoint is the central one, use
+	 * US_EAST_1.
+	 *
+	 * @param endpoint the configure endpoint.
+	 * @return the S3 region, null if unable to resolve from endpoint.
+	 */
+	private Region getS3RegionFromEndpoint(String endpoint) {
+		if (!endpoint.endsWith(CENTRAL_ENDPOINT)) {
+			log.debug("Endpoint {} is not the default; parsing", endpoint);
+			return AWSHostNameUtils.parseSigningRegion(endpoint, S3_SERVICE_NAME).orElse(null);
+		}
 
-	    // endpoint is for US_EAST_1;
-	    return Region.US_EAST_1;
-	  }
+		// endpoint is for US_EAST_1;
+		return Region.US_EAST_1;
+	}
 
 	@Override
 	protected void connectToRepository(Repository source, AuthenticationInfo auth, ProxyInfo proxy) {
@@ -478,7 +488,8 @@ public class S3Wagon extends AbstractWagon implements RequestFactory {
 	 */
 	@Override
 	protected boolean isRemoteResourceNewer(final String resourceName, final long timestamp) {
-		HeadObjectResponse metadata = client.headObject(HeadObjectRequest.builder().bucket(bucketName).key(basedir + resourceName).build());
+		HeadObjectResponse metadata = client
+				.headObject(HeadObjectRequest.builder().bucket(bucketName).key(basedir + resourceName).build());
 		return metadata.lastModified().compareTo(Instant.ofEpochMilli(timestamp)) < 0;
 	}
 
@@ -497,7 +508,8 @@ public class S3Wagon extends AbstractWagon implements RequestFactory {
 			prefix += delimiter;
 		}
 		// info("prefix=" + prefix);
-		ListObjectsRequest request = ListObjectsRequest.builder().bucket(bucketName).prefix(prefix).delimiter(delimiter).build();
+		ListObjectsRequest request = ListObjectsRequest.builder().bucket(bucketName).prefix(prefix).delimiter(delimiter)
+				.build();
 		ListObjectsResponse objectListing = client.listObjects(request);
 		// info("truncated=" + objectListing.isTruncated());
 		// info("prefix=" + prefix);
@@ -514,7 +526,8 @@ public class S3Wagon extends AbstractWagon implements RequestFactory {
 			}
 		}
 		for (CommonPrefix commonPrefix : objectListing.commonPrefixes()) {
-			String value = commonPrefix.prefix().startsWith(basedir) ? commonPrefix.prefix().substring(basedir.length()) : commonPrefix.prefix();
+			String value = commonPrefix.prefix().startsWith(basedir) ? commonPrefix.prefix().substring(basedir.length())
+					: commonPrefix.prefix();
 			// info("commonPrefix=" + commonPrefix);
 			// info("relativeValue=" + relativeValue);
 			// info("Adding common prefix - " + value);
@@ -606,7 +619,8 @@ public class S3Wagon extends AbstractWagon implements RequestFactory {
 			InputStream input = getInputStream(source, progress);
 			String contentType = mimeTypes.getMimetype(source);
 			long contentLength = source.length();
-			PutObjectRequest request = PutObjectRequest.builder().bucket(bucketName).key(key).contentLength(contentLength).contentType(contentType).build();
+			PutObjectRequest request = PutObjectRequest.builder().bucket(bucketName).key(key)
+					.contentLength(contentLength).contentType(contentType).build();
 			if (acl != null) {
 				request = request.toBuilder().acl(acl).build();
 			}

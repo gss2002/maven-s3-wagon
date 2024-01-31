@@ -24,8 +24,9 @@ import org.apache.maven.wagon.events.TransferListener;
 import org.apache.maven.wagon.resource.Resource;
 
 /**
- * Support for sending messages to Maven transfer listeners. Automates the collection of listeners and the iteration
- * over that collection when an event is fired.
+ * Support for sending messages to Maven transfer listeners. Automates the
+ * collection of listeners and the iteration over that collection when an event
+ * is fired.
  *
  * @author Ben Hale
  */
@@ -38,8 +39,7 @@ class TransferListenerSupport {
 	/**
 	 * Creates a new instance
 	 *
-	 * @param wagon
-	 *            The wagon that events will come from
+	 * @param wagon The wagon that events will come from
 	 */
 	public TransferListenerSupport(Wagon wagon) {
 		this.wagon = wagon;
@@ -48,12 +48,12 @@ class TransferListenerSupport {
 	/**
 	 * Adds a listener to the collection
 	 *
-	 * @param listener
-	 *            The listener to add
+	 * @param listener The listener to add
 	 */
 	public synchronized void addListener(TransferListener listener) {
 		if (listener.getClass().equals(org.apache.maven.wagon.observers.Debug.class)) {
-			// This class clutters up the console with a bunch of incorrect junk about the transfer
+			// This class clutters up the console with a bunch of incorrect junk about the
+			// transfer
 			// Timing information is zero'd out
 			return;
 		}
@@ -63,8 +63,7 @@ class TransferListenerSupport {
 	/**
 	 * Removes a listener from the collection
 	 *
-	 * @param listener
-	 *            The listener to remove
+	 * @param listener The listener to remove
 	 */
 	public synchronized void removeListener(TransferListener listener) {
 		listeners.remove(listener);
@@ -73,8 +72,7 @@ class TransferListenerSupport {
 	/**
 	 * Whether the collection already contains a listener
 	 *
-	 * @param listener
-	 *            The listener to check for
+	 * @param listener The listener to check for
 	 * @return whether the collection contains the listener
 	 */
 	public synchronized boolean hasListener(TransferListener listener) {
@@ -84,10 +82,8 @@ class TransferListenerSupport {
 	/**
 	 * Sends a transfer initated event to all listeners
 	 *
-	 * @param resource
-	 *            The resource being transfered
-	 * @param requestType
-	 *            GET or PUT request
+	 * @param resource    The resource being transfered
+	 * @param requestType GET or PUT request
 	 * @see TransferEvent#TRANSFER_INITIATED
 	 */
 	public synchronized void fireTransferInitiated(Resource resource, int requestType) {
@@ -100,10 +96,8 @@ class TransferListenerSupport {
 	/**
 	 * Sends a transfer started event to all listeners
 	 *
-	 * @param resource
-	 *            The resource being transfered
-	 * @param requestType
-	 *            GET or PUT request
+	 * @param resource    The resource being transfered
+	 * @param requestType GET or PUT request
 	 * @see TransferEvent#TRANSFER_STARTED
 	 */
 	public synchronized void fireTransferStarted(Resource resource, int requestType) {
@@ -123,10 +117,8 @@ class TransferListenerSupport {
 	/**
 	 * Sends a transfer completed event to all listeners
 	 *
-	 * @param resource
-	 *            The resource being transfered
-	 * @param requestType
-	 *            GET or PUT request
+	 * @param resource    The resource being transfered
+	 * @param requestType GET or PUT request
 	 * @see TransferEvent#TRANSFER_COMPLETED
 	 */
 	public synchronized void fireTransferCompleted(Resource resource, int requestType) {
@@ -139,12 +131,9 @@ class TransferListenerSupport {
 	/**
 	 * Sends a transfer error event to all listeners
 	 *
-	 * @param resource
-	 *            The resource being transfered
-	 * @param requestType
-	 *            GET or PUT request
-	 * @param e
-	 *            The transfer error
+	 * @param resource    The resource being transfered
+	 * @param requestType GET or PUT request
+	 * @param e           The transfer error
 	 */
 	public synchronized void fireTransferError(Resource resource, int requestType, Exception e) {
 		TransferEvent event = new TransferEvent(wagon, resource, e, requestType);

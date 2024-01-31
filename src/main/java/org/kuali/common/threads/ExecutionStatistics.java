@@ -16,30 +16,31 @@
 package org.kuali.common.threads;
 
 public class ExecutionStatistics {
-    int iterationCount;
-    long executionTime;
-    long threadCount;
-    public long getExecutionTime() {
-        return executionTime;
-    }
+	int iterationCount;
+	long executionTime;
+	long threadCount;
 
-    public void setExecutionTime(long millis) {
-        this.executionTime = millis;
-    }
+	public long getExecutionTime() {
+		return executionTime;
+	}
 
-    public long getThreadCount() {
-        return threadCount;
-    }
+	public void setExecutionTime(long millis) {
+		this.executionTime = millis;
+	}
 
-    public void setThreadCount(long count) {
-        this.threadCount = count;
-    }
+	public long getThreadCount() {
+		return threadCount;
+	}
 
-    public int getIterationCount() {
-        return iterationCount;
-    }
+	public void setThreadCount(long count) {
+		this.threadCount = count;
+	}
 
-    public void setIterationCount(int iterationCount) {
-        this.iterationCount = iterationCount;
-    }
+	public int getIterationCount() {
+		return iterationCount;
+	}
+
+	public void setIterationCount(int iterationCount) {
+		this.iterationCount = iterationCount;
+	}
 }

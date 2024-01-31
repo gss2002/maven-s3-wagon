@@ -20,87 +20,87 @@ import java.util.List;
 import org.kuali.common.threads.listener.ProgressNotifier;
 
 /**
- * Provides context for iterating over the elements in a list. Offset and length control what portion of the list is
- * iterated over. The ElementHandler is invoked each time an element in the list is encountered.
+ * Provides context for iterating over the elements in a list. Offset and length
+ * control what portion of the list is iterated over. The ElementHandler is
+ * invoked each time an element in the list is encountered.
  *
  * @param <T>
  */
 public class ListIteratorContext<T> {
-    int id;
-    int offset;
-    int length;
-    ThreadHandler<T> threadHandler;
-    ProgressNotifier<T> notifier;
-    List<T> list;
-    ElementHandler<T> elementHandler;
+	int id;
+	int offset;
+	int length;
+	ThreadHandler<T> threadHandler;
+	ProgressNotifier<T> notifier;
+	List<T> list;
+	ElementHandler<T> elementHandler;
 
-    public ListIteratorContext() {
-        this(0, 0, 0, null);
-    }
+	public ListIteratorContext() {
+		this(0, 0, 0, null);
+	}
 
-    public ListIteratorContext(int id, int offset, int length, List<T> list) {
-        super();
-        this.id = id;
-        this.offset = offset;
-        this.length = length;
-        this.list = list;
-    }
+	public ListIteratorContext(int id, int offset, int length, List<T> list) {
+		super();
+		this.id = id;
+		this.offset = offset;
+		this.length = length;
+		this.list = list;
+	}
 
-    public int getId() {
-        return id;
-    }
+	public int getId() {
+		return id;
+	}
 
-    public void setId(int id) {
-        this.id = id;
-    }
+	public void setId(int id) {
+		this.id = id;
+	}
 
-    public int getOffset() {
-        return offset;
-    }
+	public int getOffset() {
+		return offset;
+	}
 
-    public void setOffset(int offset) {
-        this.offset = offset;
-    }
+	public void setOffset(int offset) {
+		this.offset = offset;
+	}
 
-    public int getLength() {
-        return length;
-    }
+	public int getLength() {
+		return length;
+	}
 
-    public void setLength(int length) {
-        this.length = length;
-    }
+	public void setLength(int length) {
+		this.length = length;
+	}
 
-    public ThreadHandler<T> getThreadHandler() {
-        return threadHandler;
-    }
+	public ThreadHandler<T> getThreadHandler() {
+		return threadHandler;
+	}
 
-    public void setThreadHandler(ThreadHandler<T> threadHandler) {
-        this.threadHandler = threadHandler;
-    }
+	public void setThreadHandler(ThreadHandler<T> threadHandler) {
+		this.threadHandler = threadHandler;
+	}
 
-    public ProgressNotifier<T> getNotifier() {
-        return notifier;
-    }
+	public ProgressNotifier<T> getNotifier() {
+		return notifier;
+	}
 
-    public void setNotifier(ProgressNotifier<T> tracker) {
-        this.notifier = tracker;
-    }
+	public void setNotifier(ProgressNotifier<T> tracker) {
+		this.notifier = tracker;
+	}
 
-    public List<T> getList() {
-        return list;
-    }
+	public List<T> getList() {
+		return list;
+	}
 
-    public void setList(List<T> list) {
-        this.list = list;
-    }
+	public void setList(List<T> list) {
+		this.list = list;
+	}
 
-    public ElementHandler<T> getElementHandler() {
-        return elementHandler;
-    }
+	public ElementHandler<T> getElementHandler() {
+		return elementHandler;
+	}
 
-    public void setElementHandler(ElementHandler<T> elementHandler) {
-        this.elementHandler = elementHandler;
-    }
+	public void setElementHandler(ElementHandler<T> elementHandler) {
+		this.elementHandler = elementHandler;
+	}
 
 }
-

@@ -23,8 +23,9 @@ import org.apache.maven.wagon.events.SessionEvent;
 import org.apache.maven.wagon.events.SessionListener;
 
 /**
- * Support for sending messages to Maven session listeners. Automates the collection of listeners and the iteration over
- * that collection when an event is fired.
+ * Support for sending messages to Maven session listeners. Automates the
+ * collection of listeners and the iteration over that collection when an event
+ * is fired.
  * 
  * @author Ben Hale
  */
@@ -37,8 +38,7 @@ class SessionListenerSupport {
 	/**
 	 * Creates a new instance
 	 * 
-	 * @param wagon
-	 *            The wagon that events will come from
+	 * @param wagon The wagon that events will come from
 	 */
 	public SessionListenerSupport(Wagon wagon) {
 		this.wagon = wagon;
@@ -47,8 +47,7 @@ class SessionListenerSupport {
 	/**
 	 * Adds a listener to the collection
 	 * 
-	 * @param listener
-	 *            The listener to add
+	 * @param listener The listener to add
 	 */
 	public void addListener(SessionListener listener) {
 		listeners.add(listener);
@@ -57,8 +56,7 @@ class SessionListenerSupport {
 	/**
 	 * Removes a listener from the collection
 	 * 
-	 * @param listener
-	 *            The listener to remove
+	 * @param listener The listener to remove
 	 */
 	public void removeListener(SessionListener listener) {
 		listeners.remove(listener);
@@ -67,8 +65,7 @@ class SessionListenerSupport {
 	/**
 	 * Whether the collection already contains a listener
 	 * 
-	 * @param listener
-	 *            The listener to check for
+	 * @param listener The listener to check for
 	 * @return Whether the collection contains a listener
 	 */
 	public boolean hasListener(SessionListener listener) {
@@ -162,8 +159,7 @@ class SessionListenerSupport {
 	/**
 	 * Sends a session error event to all listeners
 	 * 
-	 * @param e
-	 *            The session error
+	 * @param e The session error
 	 */
 	public void fireSessionError(Exception e) {
 		SessionEvent event = new SessionEvent(wagon, e);
