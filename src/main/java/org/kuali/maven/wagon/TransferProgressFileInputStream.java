@@ -19,7 +19,8 @@ import java.io.File;
 import java.io.FileInputStream;
 import java.io.IOException;
 
-import com.amazonaws.internal.ResettableInputStream;
+import software.amazon.awssdk.core.io.ResettableInputStream;
+
 
 /**
  * An extension to the {@link FileInputStream} that notifies a @{link TransferProgress} object as it is being read from

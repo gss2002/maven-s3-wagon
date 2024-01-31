@@ -27,18 +27,23 @@ import org.kuali.common.aws.s3.pojo.S3PrefixContext;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import com.amazonaws.auth.AWSCredentials;
-import com.amazonaws.auth.BasicAWSCredentials;
-import com.amazonaws.services.s3.AmazonS3;
-import com.amazonaws.services.s3.AmazonS3Client;
-import com.amazonaws.services.s3.model.AmazonS3Exception;
-import com.amazonaws.services.s3.model.Bucket;
-import com.amazonaws.services.s3.model.ListObjectsRequest;
-import com.amazonaws.services.s3.model.ObjectListing;
-import com.amazonaws.services.s3.model.PutObjectRequest;
-import com.amazonaws.services.s3.model.S3ObjectSummary;
-import com.amazonaws.services.s3.transfer.TransferManager;
-import com.amazonaws.services.s3.transfer.Upload;
+
+
+import software.amazon.awssdk.auth.credentials.AwsBasicCredentials;
+import software.amazon.awssdk.auth.credentials.AwsCredentials;
+import software.amazon.awssdk.auth.credentials.StaticCredentialsProvider;
+import software.amazon.awssdk.core.sync.RequestBody;
+import software.amazon.awssdk.services.s3.S3Client;
+import software.amazon.awssdk.services.s3.model.PutObjectRequest;
+import software.amazon.awssdk.services.s3.model.S3Exception;
+import software.amazon.awssdk.services.s3.model.S3Object;
+import software.amazon.awssdk.transfer.s3.S3TransferManager;
+import software.amazon.awssdk.transfer.s3.model.Upload;
+import software.amazon.awssdk.transfer.s3.model.UploadRequest;
+import software.amazon.awssdk.services.s3.model.Bucket;
+import software.amazon.awssdk.services.s3.model.CommonPrefix;
+import software.amazon.awssdk.services.s3.model.ListObjectsV2Request;
+import software.amazon.awssdk.services.s3.model.ListObjectsV2Response;
 
 /**
  * Utility methods related to Amazon S3
@@ -65,13 +70,13 @@ public class S3Utils {
 		super();
 	}
 
-	public AWSCredentials getCredentials(String accessKey, String secretKey) {
-		return new BasicAWSCredentials(accessKey, secretKey);
+	public AwsCredentials getCredentials(String accessKey, String secretKey) {
+		return AwsBasicCredentials.create(accessKey, secretKey);
 	}
 
-	public AmazonS3Client getClient(String accessKey, String secretKey) {
-		AWSCredentials credentials = getCredentials(accessKey, secretKey);
-		return new AmazonS3Client(credentials);
+	public S3Client getClient(String accessKey, String secretKey) {
+		AwsCredentials credentials = getCredentials(accessKey, secretKey);
+		return S3Client.builder().credentialsProvider(StaticCredentialsProvider.create(credentials)).build();
 	}
 
 	/**
@@ -79,11 +84,11 @@ public class S3Utils {
 	 * Multi-part uploads split the file into several smaller chunks with each chunk being uploaded in a different thread. Once all the
 	 * threads have completed the file is automatically reassembled on S3 as a single file.
 	 */
-	public void upload(File file, PutObjectRequest request, AmazonS3 client, TransferManager manager) {
+	public void upload(File file, PutObjectRequest request, S3Client client, S3TransferManager manager) {
 		// Store the file on S3
 		if (file.length() < MULTI_PART_UPLOAD_THRESHOLD) {
 			// Use normal upload for small files
-			client.putObject(request);
+			client.putObject(request, RequestBody.fromFile(file));
 		} else {
 			log.debug("Blocking multi-part upload: " + file.getAbsolutePath());
 			// Use multi-part upload for large files
@@ -99,35 +104,31 @@ public class S3Utils {
 	 * that particular thread was handling will have to be re-uploaded (instead of the entire file). A reasonable number of automatic
 	 * retries occurs if an individual upload thread fails. If the file upload fails this method throws <code>AmazonS3Exception</code>
 	 */
-	public void blockingMultiPartUpload(PutObjectRequest request, TransferManager manager) {
+	public void blockingMultiPartUpload(PutObjectRequest request, S3TransferManager manager) {
 		// Use multi-part upload for large files
-		Upload upload = manager.upload(request);
+		Upload upload = manager.upload(UploadRequest.builder().putObjectRequest(request).build());
 		try {
 			// Block and wait for the upload to finish
-			upload.waitForCompletion();
+			upload.completionFuture().get().response();
 		} catch (Exception e) {
-			throw new AmazonS3Exception("Unexpected error uploading file", e);
+			throw S3Exception.create("Unexpected error uploading file", e);
 		}
 	}
 
-	public ListObjectsRequest getListObjectsRequest(String bucketName, String prefix, String delimiter, Integer maxKeys) {
-		ListObjectsRequest request = new ListObjectsRequest();
-		request.setBucketName(bucketName);
-		request.setDelimiter(delimiter);
-		request.setPrefix(prefix);
-		request.setMaxKeys(maxKeys);
+	public ListObjectsV2Request getListObjectsRequest(String bucketName, String prefix, String delimiter, Integer maxKeys) {
+		ListObjectsV2Request request = ListObjectsV2Request.builder().bucket(bucketName).delimiter(delimiter).prefix(prefix).maxKeys(maxKeys).build();
 		return request;
 	}
 
-	public ListObjectsRequest getListObjectsRequest(String bucketName, String prefix, String delimiter) {
+	public ListObjectsV2Request getListObjectsRequest(String bucketName, String prefix, String delimiter) {
 		return getListObjectsRequest(bucketName, prefix, delimiter, null);
 	}
 
-	public ListObjectsRequest getListObjectsRequest(String bucketName, String prefix) {
+	public ListObjectsV2Request getListObjectsRequest(String bucketName, String prefix) {
 		return getListObjectsRequest(bucketName, prefix, null);
 	}
 
-	public ListObjectsRequest getListObjectsRequest(String bucketName) {
+	public ListObjectsV2Request getListObjectsRequest(String bucketName) {
 		return getListObjectsRequest(bucketName, null);
 	}
 
@@ -170,20 +171,20 @@ public class S3Utils {
 		return sb.toString();
 	}
 
-	public void buildPrefixList(AmazonS3Client client, String bucketName, List<String> prefixes, String prefix, String delimiter, BaseCase baseCase) {
+	public void buildPrefixList(S3Client client, String bucketName, List<String> prefixes, String prefix, String delimiter, BaseCase baseCase) {
 		log.info(prefix);
 		prefixes.add(prefix);
-		ListObjectsRequest request = getListObjectsRequest(bucketName, prefix, delimiter);
-		ObjectListing listing = client.listObjects(request);
-		List<String> commonPrefixes = listing.getCommonPrefixes();
-		for (String commonPrefix : commonPrefixes) {
-			if (!baseCase.isBaseCase(commonPrefix)) {
-				buildPrefixList(client, bucketName, prefixes, commonPrefix, delimiter, baseCase);
+		ListObjectsV2Request request = getListObjectsRequest(bucketName, prefix, delimiter);
+		ListObjectsV2Response listing = client.listObjectsV2(request);
+		List<CommonPrefix> commonPrefixes = listing.commonPrefixes();
+		for (CommonPrefix commonPrefix : commonPrefixes) {
+			if (!baseCase.isBaseCase(commonPrefix.prefix())) {
+				buildPrefixList(client, bucketName, prefixes, commonPrefix.prefix(), delimiter, baseCase);
 			}
 		}
 	}
 
-	public void summarize(AmazonS3Client client, String bucketName, DefaultMutableTreeNode node) {
+	public void summarize(S3Client client, String bucketName, DefaultMutableTreeNode node) {
 		List<DefaultMutableTreeNode> leaves = getLeaves(node);
 		for (DefaultMutableTreeNode leaf : leaves) {
 			BucketPrefixSummary summary = (BucketPrefixSummary) leaf.getUserObject();
@@ -227,7 +228,7 @@ public class S3Utils {
 	}
 
 	public AccountSummary getAccountSummary(AccountSummaryContext context) {
-		AmazonS3Client client = getClient(context.getAccessKey(), context.getSecretKey());
+		S3Client client = getClient(context.getAccessKey(), context.getSecretKey());
 		List<Bucket> buckets = getBuckets(client, context.getIncludes(), context.getExcludes());
 		List<BucketSummary> summaries = getBucketSummaries(client, buckets);
 		AccountSummary summary = new AccountSummary();
@@ -246,12 +247,12 @@ public class S3Utils {
 		return getAccountSummary(context);
 	}
 
-	public List<BucketSummary> getBucketSummaries(AmazonS3Client client, List<Bucket> buckets) {
+	public List<BucketSummary> getBucketSummaries(S3Client client, List<Bucket> buckets) {
 		List<BucketSummary> summaries = new ArrayList<BucketSummary>();
 		int count = 1;
 		for (Bucket bucket : buckets) {
 			long start = System.currentTimeMillis();
-			System.out.print("[INFO] " + count + " - " + bucket.getName() + " - ");
+			System.out.print("[INFO] " + count + " - " + bucket.name() + " - ");
 			BucketSummary summary = getBucketSummary(client, bucket);
 			System.out.println(formatter.getTime(System.currentTimeMillis() - start));
 			summaries.add(summary);
@@ -260,58 +261,76 @@ public class S3Utils {
 		return summaries;
 	}
 
-	public BucketSummary getBucketSummary(AmazonS3Client client, Bucket bucket) {
+	public BucketSummary getBucketSummary(S3Client client, Bucket bucket) {
+        boolean done = false;
 		BucketSummary summary = new BucketSummary();
 		summary.setBucket(bucket);
-		ListObjectsRequest request = getListObjectsRequest(bucket.getName());
-		ObjectListing current = client.listObjects(request);
-		updateBucketSummary(summary, current.getObjectSummaries());
-		while (current.isTruncated()) {
-			current = client.listNextBatchOfObjects(current);
-			updateBucketSummary(summary, current.getObjectSummaries());
+		ListObjectsV2Request request = getListObjectsRequest(bucket.name());
+		while (!done) {
+			ListObjectsV2Response current = client.listObjectsV2(request);
+			updateBucketSummary(summary, current.contents());
+            if (current.nextContinuationToken() == null) {
+                done = true;
+            } else {
+            	request = request.toBuilder()
+                            .continuationToken(current.nextContinuationToken())
+                            .build();     
+            }
 		}
-		log.debug("Completed summary for '{}'", bucket.getName());
+		log.debug("Completed summary for '{}'", bucket.name());
 		return summary;
 	}
 
-	public BucketPrefixSummary summarize(AmazonS3Client client, String bucketName) {
+	public BucketPrefixSummary summarize(S3Client client, String bucketName) {
+        boolean done = false;
 		BucketPrefixSummary summary = new BucketPrefixSummary();
-		ListObjectsRequest request = getListObjectsRequest(bucketName);
-		ObjectListing current = client.listObjects(request);
-		summarize(summary, current.getObjectSummaries());
-		while (current.isTruncated()) {
-			current = client.listNextBatchOfObjects(current);
-			summarize(summary, current.getObjectSummaries());
+		ListObjectsV2Request request = getListObjectsRequest(bucketName);
+        while (!done) {
+    		ListObjectsV2Response current = client.listObjectsV2(request);
+			summarize(summary, current.contents());
+            if (current.nextContinuationToken() == null) {
+                done = true;
+            } else {
+            	request = request.toBuilder()
+                            .continuationToken(current.nextContinuationToken())
+                            .build();     
+            }
 		}
 		log.debug("Completed summary for '{}'", bucketName);
 		return summary;
 	}
 
-	public BucketPrefixSummary summarize(AmazonS3Client client, String bucketName, BucketPrefixSummary summary) {
-		ListObjectsRequest request = getListObjectsRequest(bucketName, summary.getPrefix());
-		ObjectListing current = client.listObjects(request);
-		summarize(summary, current.getObjectSummaries());
-		while (current.isTruncated()) {
-			current = client.listNextBatchOfObjects(current);
-			summarize(summary, current.getObjectSummaries());
+	public BucketPrefixSummary summarize(S3Client client, String bucketName, BucketPrefixSummary summary) {
+        boolean done = false;
+		ListObjectsV2Request request = getListObjectsRequest(bucketName, summary.getPrefix());
+        while (!done) {
+    		ListObjectsV2Response current = client.listObjectsV2(request);
+			summarize(summary, current.contents());
+            if (current.nextContinuationToken() == null) {
+                done = true;
+            } else {
+            	request = request.toBuilder()
+                            .continuationToken(current.nextContinuationToken())
+                            .build();     
+            }
 		}
 		log.debug("Completed summary for prefix '{}'", summary.getPrefix());
 		return summary;
 	}
 
-	public void updateBucketSummary(BucketSummary summary, List<S3ObjectSummary> summaries) {
-		for (S3ObjectSummary element : summaries) {
-			summary.setSize(summary.getSize() + element.getSize());
+	public void updateBucketSummary(BucketSummary summary, List<S3Object> summaries) {
+		for (S3Object element : summaries) {
+			summary.setSize(summary.getSize() + element.size());
 			summary.setCount(summary.getCount() + 1);
 		}
 	}
 
-	public void summarize(BucketPrefixSummary summary, List<S3ObjectSummary> summaries) {
-		for (S3ObjectSummary element : summaries) {
-			summary.setSize(summary.getSize() + element.getSize());
+	public void summarize(BucketPrefixSummary summary, List<S3Object> summaries) {
+		for (S3Object element : summaries) {
+			summary.setSize(summary.getSize() + element.size());
 			summary.setCount(summary.getCount() + 1);
 			if (log.isDebugEnabled()) {
-				log.debug(summary.getCount() + " - " + element.getKey() + " - " + formatter.getSize(element.getSize()));
+				log.debug(summary.getCount() + " - " + element.key() + " - " + formatter.getSize(element.size()));
 			}
 		}
 		if (log.isDebugEnabled()) {
@@ -362,7 +381,7 @@ public class S3Utils {
 		return list;
 	}
 
-	public List<S3PrefixContext> getS3PrefixContexts(AmazonS3Client client, String bucketName, List<BucketPrefixSummary> summaries) {
+	public List<S3PrefixContext> getS3PrefixContexts(S3Client client, String bucketName, List<BucketPrefixSummary> summaries) {
 		List<S3PrefixContext> contexts = new ArrayList<S3PrefixContext>();
 		for (BucketPrefixSummary summary : summaries) {
 			S3PrefixContext context = new S3PrefixContext();
@@ -515,16 +534,16 @@ public class S3Utils {
 		return sb.toString();
 	}
 
-	public List<Bucket> getBuckets(AmazonS3Client client, List<String> includes, List<String> excludes) {
-		List<Bucket> buckets = client.listBuckets();
+	public List<Bucket> getBuckets(S3Client client, List<String> includes, List<String> excludes) {
+		List<Bucket> buckets = client.listBuckets().buckets();
 		int originalSize = buckets.size();
 		log.info("Located " + buckets.size() + " total buckets");
-		Iterator<Bucket> itr = buckets.iterator();
+		Iterator<software.amazon.awssdk.services.s3.model.Bucket> itr = buckets.iterator();
 		while (itr.hasNext()) {
-			Bucket bucket = itr.next();
-			String bucketName = bucket.getName();
+			software.amazon.awssdk.services.s3.model.Bucket bucket = itr.next();
+			String bucketName = bucket.name();
 			if (!include(bucketName, includes, excludes)) {
-				log.info("Excluding '" + bucket.getName() + "'");
+				log.info("Excluding '" + bucket.name() + "'");
 				itr.remove();
 			}
 		}
@@ -569,7 +588,7 @@ public class S3Utils {
 
 	protected String[] getRow(BucketSummary summary) {
 		String[] row = new String[3];
-		row[0] = summary.getBucket().getName();
+		row[0] = summary.getBucket().name();
 		row[1] = formatter.getCount(summary.getCount());
 		row[2] = formatter.getSize(summary.getSize());
 		return row;
@@ -595,7 +614,7 @@ public class S3Utils {
 
 	protected String[] getAccountSummaryCSVRow(BucketSummary summary, Date date) {
 		String[] row = new String[4];
-		row[0] = summary.getBucket().getName();
+		row[0] = summary.getBucket().name();
 		row[1] = summary.getCount() + "";
 		row[2] = summary.getSize() + "";
 		row[3] = formatter.getDate(date);
@@ -606,7 +625,7 @@ public class S3Utils {
 		try {
 			FileUtils.write(file, data, append);
 		} catch (IOException e) {
-			throw new AmazonS3Exception("Error writing to file", e);
+			throw S3Exception.create("Error writing to file", e);
 		}
 	}
 

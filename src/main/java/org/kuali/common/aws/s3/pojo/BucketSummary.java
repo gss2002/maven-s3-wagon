@@ -15,7 +15,7 @@
  */
 package org.kuali.common.aws.s3.pojo;
 
-import com.amazonaws.services.s3.model.Bucket;
+import software.amazon.awssdk.services.s3.model.Bucket;
 
 public class BucketSummary {
 

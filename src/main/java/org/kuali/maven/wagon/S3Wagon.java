@@ -21,7 +21,9 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.net.URI;
+import java.net.URISyntaxException;
 import java.nio.file.Files;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Date;
 import java.util.List;
@@ -40,36 +42,44 @@ import org.kuali.common.threads.ExecutionStatistics;
 import org.kuali.common.threads.ThreadHandlerContext;
 import org.kuali.common.threads.ThreadInvoker;
 import org.kuali.common.threads.listener.PercentCompleteListener;
-import org.kuali.maven.wagon.auth.MavenAwsCredentialsProviderChain;
+import org.kuali.maven.wagon.auth.MvnAwsCredentialsProvider;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import com.amazonaws.AmazonClientException;
-import com.amazonaws.AmazonServiceException;
-import com.amazonaws.ClientConfiguration;
-import com.amazonaws.Protocol;
-import com.amazonaws.auth.AWSCredentialsProvider;
-import com.amazonaws.auth.AWSCredentialsProviderChain;
-import com.amazonaws.client.builder.AwsClientBuilder;
-import com.amazonaws.internal.ResettableInputStream;
-import com.amazonaws.services.s3.AmazonS3;
-import com.amazonaws.services.s3.AmazonS3Builder;
-import com.amazonaws.services.s3.AmazonS3Client;
-import com.amazonaws.services.s3.AmazonS3ClientBuilder;
-import com.amazonaws.services.s3.internal.Mimetypes;
-import com.amazonaws.services.s3.internal.ServiceUtils;
-import com.amazonaws.services.s3.model.CannedAccessControlList;
-import com.amazonaws.services.s3.model.ListObjectsRequest;
-import com.amazonaws.services.s3.model.ObjectListing;
-import com.amazonaws.services.s3.model.ObjectMetadata;
-import com.amazonaws.services.s3.model.PutObjectRequest;
-import com.amazonaws.services.s3.model.S3Object;
-import com.amazonaws.services.s3.model.S3ObjectSummary;
-import com.amazonaws.services.s3.transfer.TransferManager;
-import com.amazonaws.services.s3.transfer.TransferManagerBuilder;
-import com.amazonaws.util.AwsHostNameUtils;
-import com.amazonaws.util.RuntimeHttpUtils;
+
 import com.google.common.base.Optional;
+
+import software.amazon.awssdk.auth.credentials.AwsCredentialsProvider;
+import software.amazon.awssdk.awscore.exception.AwsServiceException;
+import software.amazon.awssdk.awscore.util.AwsHostNameUtils;
+import software.amazon.awssdk.core.ResponseInputStream;
+import software.amazon.awssdk.core.exception.SdkClientException;
+import software.amazon.awssdk.core.internal.util.Mimetype;
+import software.amazon.awssdk.core.io.ResettableInputStream;
+import software.amazon.awssdk.regions.Region;
+import software.amazon.awssdk.services.s3.S3AsyncClient;
+import software.amazon.awssdk.services.s3.S3AsyncClientBuilder;
+import software.amazon.awssdk.services.s3.S3BaseClientBuilder;
+import software.amazon.awssdk.services.s3.S3Client;
+import software.amazon.awssdk.services.s3.S3ClientBuilder;
+import software.amazon.awssdk.services.s3.model.CommonPrefix;
+import software.amazon.awssdk.services.s3.model.CreateBucketRequest;
+import software.amazon.awssdk.services.s3.model.GetBucketAclRequest;
+import software.amazon.awssdk.services.s3.model.GetObjectAttributesRequest;
+import software.amazon.awssdk.services.s3.model.GetObjectAttributesResponse;
+import software.amazon.awssdk.services.s3.model.GetObjectRequest;
+import software.amazon.awssdk.services.s3.model.GetObjectResponse;
+import software.amazon.awssdk.services.s3.model.HeadBucketRequest;
+import software.amazon.awssdk.services.s3.model.HeadBucketResponse;
+import software.amazon.awssdk.services.s3.model.HeadObjectRequest;
+import software.amazon.awssdk.services.s3.model.HeadObjectResponse;
+import software.amazon.awssdk.services.s3.model.ListObjectsRequest;
+import software.amazon.awssdk.services.s3.model.ListObjectsResponse;
+import software.amazon.awssdk.services.s3.model.ObjectCannedACL;
+import software.amazon.awssdk.services.s3.model.PutObjectRequest;
+import software.amazon.awssdk.services.s3.model.S3Object;
+import software.amazon.awssdk.transfer.s3.S3TransferManager;
+import software.amazon.awssdk.utils.Validate;
 
 /**
  * <p>
@@ -102,9 +112,11 @@ public class S3Wagon extends AbstractWagon implements RequestFactory {
 	public static final String PROTOCOL_KEY = "maven.wagon.protocol";
 	public static final String HTTP = "http";
 	public static final String HTTP_ENDPOINT_VALUE = "http://s3.amazonaws.com";
+	public static final String CENTRAL_ENDPOINT = "s3.amazonaws.com";
 	public static final String VPC_ENDPOINT_KEY = "maven.wagon.s3.vpce";
 	public static final String REGION = "maven.wagon.s3.region";
-
+	public static final String AWS_S3_DEFAULT_REGION = "us-east-2";
+	
 	public static final String HTTPS = "https";
 	public static final String MIN_THREADS_KEY = "maven.wagon.threads.min";
 	public static final String MAX_THREADS_KEY = "maven.wagon.threads.max";
@@ -117,6 +129,12 @@ public class S3Wagon extends AbstractWagon implements RequestFactory {
 	private static final String TEMP_DIR_PATH = TEMP_DIR.getAbsolutePath();
 	private static final String SDK_REGION_CHAIN_IN_USE = "S3 client is using the SDK region chaining resolution.";
 	private static final String S3_SERVICE_NAME = "s3";
+	
+    public static final int NO_SUCH_BUCKET_STATUS_CODE = 404;
+
+    public static final int BUCKET_ACCESS_FORBIDDEN_STATUS_CODE = 403;
+
+    public static final int BUCKET_REDIRECT_STATUS_CODE = 301;
 
 	ThreadInvoker invoker = new ThreadInvoker();
 	SimpleFormatter formatter = new SimpleFormatter();
@@ -127,16 +145,18 @@ public class S3Wagon extends AbstractWagon implements RequestFactory {
 	String vpce = getVpce();
 	boolean http = HTTP.equals(protocol);
 	int readTimeout = DEFAULT_READ_TIMEOUT;
-	CannedAccessControlList acl = null;
-	TransferManager transferManager;
+	ObjectCannedACL acl = null;
+	S3TransferManager transferManager;
 
 	private static final Logger log = LoggerFactory.getLogger(S3Wagon.class);
 
-	AmazonS3 client;
+	S3Client client;
+	S3AsyncClient aClient;
+
 	String bucketName;
 	String basedir;
 
-	private final Mimetypes mimeTypes = Mimetypes.getInstance();
+	private final Mimetype mimeTypes = Mimetype.getInstance();
 
 	public S3Wagon() {
 		super(true);
@@ -145,18 +165,36 @@ public class S3Wagon extends AbstractWagon implements RequestFactory {
 		super.addTransferListener(listener);
 	}
 
-	protected void validateBucket(AmazonS3 client, String bucketName) {
+	protected void validateBucket(S3Client client, String bucketName) {
 		log.debug("Looking for bucket: " + bucketName);
-		if(client.doesBucketExistV2(bucketName)) {
+		if(doesBucketExistV2(client, bucketName)) {
 			log.debug("Found bucket '" + bucketName + "' Validating permissions");
 			validatePermissions(client, bucketName);
 		} else {
 			log.info("Creating bucket " + bucketName);
 			// If we create the bucket, we "own" it and by default have the "fullcontrol"
 			// permission
-			client.createBucket(bucketName);
+			client.createBucket(CreateBucketRequest.builder().bucket(bucketName).build());
 		}
 	}
+	
+    public boolean doesBucketExistV2(S3Client client, String bucketName) throws SdkClientException {
+        try {
+            Validate.notEmpty(bucketName, "bucketName");
+            client.getBucketAcl(GetBucketAclRequest.builder().bucket(bucketName).build());
+            return true;
+        } catch (AwsServiceException ase) {
+            // A redirect error or an AccessDenied exception means the bucket exists but it's not in this region
+            // or we don't have permissions to it.
+            if ((ase.statusCode() == BUCKET_REDIRECT_STATUS_CODE) || "AccessDenied".equals(ase.awsErrorDetails().errorCode())) {
+                return true;
+            }
+            if (ase.statusCode() == NO_SUCH_BUCKET_STATUS_CODE) {
+                return false;
+            }
+            throw ase;
+        }
+    }
 
 	/**
 	 * Establish that we have enough permissions on this bucket to do what we need
@@ -165,9 +203,9 @@ public class S3Wagon extends AbstractWagon implements RequestFactory {
 	 * @param client    S3 Client
 	 * @param bucketName AWS S3 Bucket Name.
 	 */
-	protected void validatePermissions(AmazonS3 client, String bucketName) {
+	protected void validatePermissions(S3Client client, String bucketName) {
 		// This establishes our ability to list objects in this bucket
-		ListObjectsRequest zeroObjectsRequest = new ListObjectsRequest(bucketName, null, null, null, 0);
+		ListObjectsRequest zeroObjectsRequest = ListObjectsRequest.builder().bucket(bucketName).delimiter(null).prefix(null).maxKeys(0).marker(null).build();
 		client.listObjects(zeroObjectsRequest);
 
 		/**
@@ -188,7 +226,7 @@ public class S3Wagon extends AbstractWagon implements RequestFactory {
 
 	}
 
-	protected CannedAccessControlList getAclFromRepository(Repository repository) {
+	protected ObjectCannedACL getAclFromRepository(Repository repository) {
 		RepositoryPermissions permissions = repository.getPermissions();
 		if (permissions == null) {
 			return null;
@@ -197,81 +235,176 @@ public class S3Wagon extends AbstractWagon implements RequestFactory {
 		if (StringUtils.isBlank(filePermissions)) {
 			return null;
 		}
-		return CannedAccessControlList.valueOf(filePermissions.trim());
+		return ObjectCannedACL.valueOf(filePermissions.trim());
 	}
 
-	protected ClientConfiguration getClientConfiguration() {
-		ClientConfiguration configuration = new ClientConfiguration();
-		if (http) {
-			log.info("http selected");
-			configuration.setProtocol(Protocol.HTTP);
-		}
-		return configuration;
-	}
 
-	protected AmazonS3 getAmazonS3Client(AWSCredentialsProvider credentials) {
-		ClientConfiguration configuration = getClientConfiguration();
-		AmazonS3ClientBuilder builder = AmazonS3Client.builder();
-		builder.withCredentials(credentials);
-		builder.withClientConfiguration(configuration);
-		builder.withPathStyleAccessEnabled(false);
-		AwsClientBuilder.EndpointConfiguration epr = createEndpointConfiguration(getVpce(), configuration, getRegion());
-		configureEndpoint(builder, epr);
-		AmazonS3 client = builder.build();
+	protected S3Client getAmazonS3Client(AwsCredentialsProvider credentials) {
+		S3ClientBuilder builder = S3Client.builder();
+		builder.credentialsProvider(credentials);
+		//builder.withClientConfiguration(configuration);
+		builder.forcePathStyle(false);
+	    if (!(getVpce().isEmpty())) {
+	    	configureEndpoint(builder);
+	    }
+		S3Client client = builder.build();
 		return client;
 	}
-
-	public void configureEndpoint(AmazonS3ClientBuilder builder, AmazonS3Builder.EndpointConfiguration epr) {
-		if (epr != null) {
-			builder.withEndpointConfiguration(epr);
-		} else {
-			builder.withForceGlobalBucketAccessEnabled(true);
-			String region = getRegion();
-			if (!region.isEmpty()) {
-				builder.setRegion(region);
-			} else {
-				log.warn(SDK_REGION_CHAIN_IN_USE);
-				log.debug(SDK_REGION_CHAIN_IN_USE);
-			}
-		}
-
+	
+	protected S3AsyncClient getAmazonS3AsyncClient(AwsCredentialsProvider credentials) {
+		S3AsyncClientBuilder builder = S3AsyncClient.builder();
+		builder.credentialsProvider(credentials);
+		//builder.withClientConfiguration(configuration);
+		builder.forcePathStyle(false);
+	    if (!(getVpce().isEmpty())) {
+	    	configureAsyncEndpoint(builder);
+	    }
+		S3AsyncClient aClient = builder.build();
+		return aClient;
 	}
 
-	public AwsClientBuilder.EndpointConfiguration createEndpointConfiguration(String endpoint,
-			ClientConfiguration awsConf, String awsRegion) {
-		if (endpoint == null || endpoint.isEmpty()) {
-			log.debug("Using default endpoint - need need to generate configuration");
-			return null;
-		}
-		URI epr = RuntimeHttpUtils.toUri(endpoint, awsConf);
-		log.debug("Endpoint URI = {}", epr);
-		String region = awsRegion;
-		if (StringUtils.isBlank(region)) {
-			if (!ServiceUtils.isS3USStandardEndpoint(endpoint)) {
-				log.debug("Endpoint {} is not the default; parsing", epr);
-				region = AwsHostNameUtils.parseRegion(epr.getHost(), S3_SERVICE_NAME);
-			} else {
-				log.debug("Endpoint {} is the standard one; declde region as null", epr);
-				region = null;
-			}
-		}
-		log.debug("Region for endpoint " + endpoint + ", URI " + epr + " is determined as " + region);
+	public void configureEndpoint(S3ClientBuilder builder) {
+		URI endpoint = getS3Endpoint(getVpce());
+	    String configuredRegion = REGION;
+	    Region region = null;
 
-		return new AwsClientBuilder.EndpointConfiguration(endpoint, region);
+	    // If the region was configured, set it.
+	    if (configuredRegion != null && !configuredRegion.isEmpty()) {
+	      region = Region.of(configuredRegion);
+	    }
+	    
+	    if (endpoint != null) {
+	        builder.endpointOverride(endpoint);
+	        // No region was configured, try to determine it from the endpoint.
+	        if (region == null) {
+	          region = getS3RegionFromEndpoint(getVpce());
+	        }
+	        log.debug("Setting endpoint to {}", endpoint);
+	      }	    
+	    
+	    if (region != null) {
+	        builder.region(region);
+	      } else if (configuredRegion == null) {
+	        // no region is configured, and none could be determined from the endpoint.
+	        // Use US_EAST_2 as default.
+	        region = Region.of(AWS_S3_DEFAULT_REGION);
+	        builder.crossRegionAccessEnabled(true);
+	        builder.region(region);
+	      } else if (configuredRegion.isEmpty()) {
+	        // region configuration was set to empty string.
+	        // allow this if people really want it; it is OK to rely on this
+	        // when deployed in EC2.
+	        log.warn(SDK_REGION_CHAIN_IN_USE);
+	        log.debug(SDK_REGION_CHAIN_IN_USE);
+	      }
+
+	      log.debug("Setting region to {}", region);
+	 
 	}
+	
+	public void configureAsyncEndpoint(S3AsyncClientBuilder builder) {
+		URI endpoint = getS3Endpoint(getVpce());
+	    String configuredRegion = REGION;
+	    Region region = null;
+
+	    // If the region was configured, set it.
+	    if (configuredRegion != null && !configuredRegion.isEmpty()) {
+	      region = Region.of(configuredRegion);
+	    }
+	    
+	    if (endpoint != null) {
+	        builder.endpointOverride(endpoint);
+	        // No region was configured, try to determine it from the endpoint.
+	        if (region == null) {
+	          region = getS3RegionFromEndpoint(getVpce());
+	        }
+	        log.debug("Setting endpoint to {}", endpoint);
+	      }	    
+	    
+	    if (region != null) {
+	        builder.region(region);
+	      } else if (configuredRegion == null) {
+	        // no region is configured, and none could be determined from the endpoint.
+	        // Use US_EAST_2 as default.
+	        region = Region.of(AWS_S3_DEFAULT_REGION);
+	        builder.crossRegionAccessEnabled(true);
+	        builder.region(region);
+	      } else if (configuredRegion.isEmpty()) {
+	        // region configuration was set to empty string.
+	        // allow this if people really want it; it is OK to rely on this
+	        // when deployed in EC2.
+	        log.warn(SDK_REGION_CHAIN_IN_USE);
+	        log.debug(SDK_REGION_CHAIN_IN_USE);
+	      }
+
+	      log.debug("Setting region to {}", region);
+	 
+	}
+
+	
+	  /**
+	   * Given a endpoint string, create the endpoint URI.
+	   *
+	   * @param endpoint possibly null endpoint.
+	   * @param conf config to build the URI from.
+	   * @return an endpoint uri
+	   */
+	  private static URI getS3Endpoint(String endpoint) {
+
+	    boolean secureConnections = true;
+	    if (PROTOCOL_KEY.equalsIgnoreCase("http")) {
+	    	secureConnections=false;
+	    }
+
+	    String protocol = secureConnections ? "https" : "http";
+
+	    if (endpoint == null || endpoint.isEmpty()) {
+	      // don't set an endpoint if none is configured, instead let the SDK figure it out.
+	      return null;
+	    }
+
+	    if (!endpoint.contains("://")) {
+	      endpoint = String.format("%s://%s", protocol, endpoint);
+	    }
+
+	    try {
+	      return new URI(endpoint);
+	    } catch (URISyntaxException e) {
+	      throw new IllegalArgumentException(e);
+	    }
+	  }
+	  
+	  /**
+	   * Parses the endpoint to get the region.
+	   * If endpoint is the central one, use US_EAST_1.
+	   *
+	   * @param endpoint the configure endpoint.
+	   * @return the S3 region, null if unable to resolve from endpoint.
+	   */
+	  private Region getS3RegionFromEndpoint(String endpoint) {
+
+	    if(!endpoint.endsWith(CENTRAL_ENDPOINT)) {
+	      log.debug("Endpoint {} is not the default; parsing", endpoint);
+	      return AwsHostNameUtils.parseSigningRegion(endpoint, S3_SERVICE_NAME).orElse(null);
+	    }
+
+	    // endpoint is for US_EAST_1;
+	    return Region.US_EAST_1;
+	  }
 
 	@Override
 	protected void connectToRepository(Repository source, AuthenticationInfo auth, ProxyInfo proxy) {
 
-		AWSCredentialsProvider credentials = getCredentials(auth);
+		AwsCredentialsProvider credentials = getCredentials(auth);
 		this.client = getAmazonS3Client(credentials);
-		this.transferManager = TransferManagerBuilder.standard().withS3Client(this.client).build();
+		this.aClient = getAmazonS3AsyncClient(credentials);
+		this.transferManager = S3TransferManager.builder().s3Client(this.aClient).build();
 		this.bucketName = source.getHost();
 		validateBucket(client, bucketName);
 		this.basedir = getBaseDir(source);
 
 		// If they've specified <filePermissions> in settings.xml, that always wins
-		CannedAccessControlList repoAcl = getAclFromRepository(source);
+		ObjectCannedACL repoAcl = getAclFromRepository(source);
 		if (repoAcl != null) {
 			log.info("File permissions: " + repoAcl.name());
 			acl = repoAcl;
@@ -281,8 +414,8 @@ public class S3Wagon extends AbstractWagon implements RequestFactory {
 	@Override
 	protected boolean doesRemoteResourceExist(final String resourceName) {
 		try {
-			client.getObjectMetadata(bucketName, basedir + resourceName);
-		} catch (AmazonClientException e) {
+			client.getObject(GetObjectRequest.builder().bucket(bucketName).key(basedir + resourceName).build());
+		} catch (AwsServiceException e) {
 			return false;
 		}
 		return true;
@@ -300,10 +433,10 @@ public class S3Wagon extends AbstractWagon implements RequestFactory {
 	protected void getResource(final String resourceName, final File destination, final TransferProgress progress)
 			throws ResourceDoesNotExistException, IOException {
 		// Obtain the object from S3
-		S3Object object = null;
+		ResponseInputStream<GetObjectResponse> object = null;
 		try {
 			String key = basedir + resourceName;
-			object = client.getObject(bucketName, key);
+			object = client.getObject(GetObjectRequest.builder().bucket(bucketName).key(key).build());
 		} catch (Exception e) {
 			throw new ResourceDoesNotExistException("Resource " + resourceName + " does not exist in the repository",
 					e);
@@ -314,7 +447,7 @@ public class S3Wagon extends AbstractWagon implements RequestFactory {
 		InputStream in = null;
 		OutputStream out = null;
 		try {
-			in = object.getObjectContent();
+			in = object;
 			out = new TransferProgressFileOutputStream(temporaryDestination, progress);
 			byte[] buffer = new byte[1024];
 			int length;
@@ -336,8 +469,8 @@ public class S3Wagon extends AbstractWagon implements RequestFactory {
 	 */
 	@Override
 	protected boolean isRemoteResourceNewer(final String resourceName, final long timestamp) {
-		ObjectMetadata metadata = client.getObjectMetadata(bucketName, basedir + resourceName);
-		return metadata.getLastModified().compareTo(new Date(timestamp)) < 0;
+		HeadObjectResponse metadata = client.headObject(HeadObjectRequest.builder().bucket(bucketName).key(basedir + resourceName).build());
+		return metadata.lastModified().compareTo(Instant.ofEpochMilli(timestamp)) < 0;
 	}
 
 	/**
@@ -355,18 +488,15 @@ public class S3Wagon extends AbstractWagon implements RequestFactory {
 			prefix += delimiter;
 		}
 		// info("prefix=" + prefix);
-		ListObjectsRequest request = new ListObjectsRequest();
-		request.setBucketName(bucketName);
-		request.setPrefix(prefix);
-		request.setDelimiter(delimiter);
-		ObjectListing objectListing = client.listObjects(request);
+		ListObjectsRequest request = ListObjectsRequest.builder().bucket(bucketName).prefix(prefix).delimiter(delimiter).build();
+		ListObjectsResponse objectListing = client.listObjects(request);
 		// info("truncated=" + objectListing.isTruncated());
 		// info("prefix=" + prefix);
 		// info("basedir=" + basedir);
 		List<String> fileNames = new ArrayList<String>();
-		for (S3ObjectSummary summary : objectListing.getObjectSummaries()) {
+		for (S3Object summary : objectListing.contents()) {
 			// info("summary.getKey()=" + summary.getKey());
-			String key = summary.getKey();
+			String key = summary.key();
 			String relativeKey = key.startsWith(basedir) ? key.substring(basedir.length()) : key;
 			boolean add = !StringUtils.isBlank(relativeKey) && !relativeKey.equals(directory);
 			if (add) {
@@ -374,8 +504,8 @@ public class S3Wagon extends AbstractWagon implements RequestFactory {
 				fileNames.add(relativeKey);
 			}
 		}
-		for (String commonPrefix : objectListing.getCommonPrefixes()) {
-			String value = commonPrefix.startsWith(basedir) ? commonPrefix.substring(basedir.length()) : commonPrefix;
+		for (CommonPrefix commonPrefix : objectListing.commonPrefixes()) {
+			String value = commonPrefix.prefix().startsWith(basedir) ? commonPrefix.prefix().substring(basedir.length()) : commonPrefix.prefix();
 			// info("commonPrefix=" + commonPrefix);
 			// info("relativeValue=" + relativeValue);
 			// info("Adding common prefix - " + value);
@@ -435,17 +565,6 @@ public class S3Wagon extends AbstractWagon implements RequestFactory {
 		}
 	}
 
-	protected ObjectMetadata getObjectMetadata(final File source, final String destination) {
-		// Set the mime type according to the extension of the destination file
-		String contentType = mimeTypes.getMimetype(destination);
-		long contentLength = source.length();
-
-		ObjectMetadata omd = new ObjectMetadata();
-		omd.setContentLength(contentLength);
-		omd.setContentType(contentType);
-		return omd;
-	}
-
 	/**
 	 * Create a PutObjectRequest based on the PutContext
 	 */
@@ -476,16 +595,17 @@ public class S3Wagon extends AbstractWagon implements RequestFactory {
 		try {
 			String key = getCanonicalKey(destination);
 			InputStream input = getInputStream(source, progress);
-			ObjectMetadata metadata = getObjectMetadata(source, destination);
-			PutObjectRequest request = new PutObjectRequest(bucketName, key, input, metadata);
+			String contentType = mimeTypes.getMimetype(source);
+			long contentLength = source.length();
+			PutObjectRequest request = PutObjectRequest.builder().bucket(bucketName).key(key).contentLength(contentLength).contentType(contentType).build();
 			if (acl != null) {
-				request.setCannedAcl(acl);
+				request = request.toBuilder().acl(acl).build();
 			}
 			return request;
 		} catch (FileNotFoundException e) {
-			throw new AmazonServiceException("File not found", e);
+			throw AwsServiceException.create("File not found", e);
 		} catch (IOException e) {
-			throw new AmazonServiceException("Error reading file", e);
+			throw AwsServiceException.create("Error reading file", e);
 		}
 	}
 
@@ -610,10 +730,10 @@ public class S3Wagon extends AbstractWagon implements RequestFactory {
 	 * @param authenticationInfo Authentication credentials from Maven settings.
 	 * @return Resolved AWS Credentials.
 	 */
-	protected AWSCredentialsProvider getCredentials(final AuthenticationInfo authenticationInfo) {
+	protected AwsCredentialsProvider getCredentials(final AuthenticationInfo authenticationInfo) {
 		Optional<AuthenticationInfo> auth = Optional.fromNullable(authenticationInfo);
-		AWSCredentialsProviderChain chain = new MavenAwsCredentialsProviderChain(auth);
-		return (AWSCredentialsProvider) chain;
+		MvnAwsCredentialsProvider chain = MvnAwsCredentialsProvider.builder().auth(auth).build();
+		return (AwsCredentialsProvider) chain;
 	}
 
 	@Override

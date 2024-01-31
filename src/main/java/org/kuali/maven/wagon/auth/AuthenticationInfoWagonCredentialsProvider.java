@@ -19,13 +19,15 @@ package org.kuali.maven.wagon.auth;
 import org.apache.commons.lang.StringUtils;
 import org.apache.maven.wagon.authentication.AuthenticationInfo;
 
-import com.amazonaws.auth.AWSCredentials;
-import com.amazonaws.auth.AWSCredentialsProvider;
 import com.google.common.base.Optional;
 
-public final class AuthenticationInfoCredentialsProvider implements AWSCredentialsProvider {
+import software.amazon.awssdk.auth.credentials.AwsBasicCredentials;
+import software.amazon.awssdk.auth.credentials.AwsCredentials;
+import software.amazon.awssdk.auth.credentials.AwsCredentialsProvider;
 
-	public AuthenticationInfoCredentialsProvider(Optional<AuthenticationInfo> auth) {
+public final class AuthenticationInfoWagonCredentialsProvider implements AwsCredentialsProvider {
+
+	public AuthenticationInfoWagonCredentialsProvider(Optional<AuthenticationInfo> auth) {
 		if (auth == null) {
 			throw new IllegalArgumentException("auth must not be null");
 		}
@@ -34,7 +36,7 @@ public final class AuthenticationInfoCredentialsProvider implements AWSCredentia
 
 	private final Optional<AuthenticationInfo> auth;
 
-	public AWSCredentials getCredentials() {
+	public AwsCredentials getCredentials() {
 		if (!auth.isPresent()) {
 			throw new IllegalStateException(getAuthenticationErrorMessage());
 		}
@@ -43,7 +45,7 @@ public final class AuthenticationInfoCredentialsProvider implements AWSCredentia
 		if (StringUtils.isBlank(accessKey) || StringUtils.isBlank(secretKey)) {
 			throw new IllegalArgumentException(getAuthenticationErrorMessage());
 		}
-		return new AwsCredentials(accessKey, secretKey);
+		return AwsBasicCredentials.create(accessKey, secretKey);
 	}
 
 	public void refresh() {
@@ -59,6 +61,12 @@ public final class AuthenticationInfoCredentialsProvider implements AWSCredentia
 		sb.append("  <password>[AWS Secret Access Key]</password>\n");
 		sb.append("</server>\n");
 		return sb.toString();
+	}
+
+	@Override
+	public AwsCredentials resolveCredentials() {
+		// TODO Auto-generated method stub
+		return getCredentials();
 	}
 
 }

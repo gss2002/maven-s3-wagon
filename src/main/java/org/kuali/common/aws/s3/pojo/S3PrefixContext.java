@@ -15,19 +15,19 @@
  */
 package org.kuali.common.aws.s3.pojo;
 
-import com.amazonaws.services.s3.AmazonS3Client;
+import software.amazon.awssdk.services.s3.S3Client;
 
 public class S3PrefixContext {
 
-	AmazonS3Client client;
+	S3Client client;
 	String bucketName;
 	BucketPrefixSummary summary;
 
-	public AmazonS3Client getClient() {
+	public S3Client getClient() {
 		return client;
 	}
 
-	public void setClient(AmazonS3Client client) {
+	public void setClient(S3Client client) {
 		this.client = client;
 	}
 

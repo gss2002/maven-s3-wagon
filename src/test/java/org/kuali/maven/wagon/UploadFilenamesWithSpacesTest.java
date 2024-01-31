@@ -22,11 +22,12 @@ import org.apache.maven.wagon.repository.Repository;
 import org.junit.Ignore;
 import org.junit.Test;
 
-import com.amazonaws.services.s3.model.PutObjectRequest;
+import software.amazon.awssdk.services.s3.model.PutObjectRequest;
+
 
 public class UploadFilenamesWithSpacesTest {
 
-	private static final String USERNAME = "AKIAJFD5IM7IPVVUEBNA";
+	private static final String USERNAME = System.getProperty("access.key");
 	private static final String PASSWORD = System.getProperty("secret.key");
 
 	// private static final Logger log = LoggerFactory.getLogger(S3WagonTest.class);
@@ -41,7 +42,7 @@ public class UploadFilenamesWithSpacesTest {
 			String filename = "/Users/jcaddel/ws/kuali-spaces/src/site/resources/myimages/icon with spaces.png";
 			File file = new File(filename);
 			PutObjectRequest request = wagon.getPutObjectRequest(file, "myimages/icon with spaces.png", null);
-			System.out.println(request.getKey());
+			System.out.println(request.key());
 		} catch (Exception e) {
 			e.printStackTrace();
 		}
