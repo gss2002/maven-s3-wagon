@@ -59,18 +59,13 @@ import software.amazon.awssdk.core.io.ResettableInputStream;
 import software.amazon.awssdk.regions.Region;
 import software.amazon.awssdk.services.s3.S3AsyncClient;
 import software.amazon.awssdk.services.s3.S3AsyncClientBuilder;
-import software.amazon.awssdk.services.s3.S3BaseClientBuilder;
 import software.amazon.awssdk.services.s3.S3Client;
 import software.amazon.awssdk.services.s3.S3ClientBuilder;
 import software.amazon.awssdk.services.s3.model.CommonPrefix;
 import software.amazon.awssdk.services.s3.model.CreateBucketRequest;
 import software.amazon.awssdk.services.s3.model.GetBucketAclRequest;
-import software.amazon.awssdk.services.s3.model.GetObjectAttributesRequest;
-import software.amazon.awssdk.services.s3.model.GetObjectAttributesResponse;
 import software.amazon.awssdk.services.s3.model.GetObjectRequest;
 import software.amazon.awssdk.services.s3.model.GetObjectResponse;
-import software.amazon.awssdk.services.s3.model.HeadBucketRequest;
-import software.amazon.awssdk.services.s3.model.HeadBucketResponse;
 import software.amazon.awssdk.services.s3.model.HeadObjectRequest;
 import software.amazon.awssdk.services.s3.model.HeadObjectResponse;
 import software.amazon.awssdk.services.s3.model.ListObjectsRequest;
@@ -125,6 +120,8 @@ public class S3Wagon extends AbstractWagon implements RequestFactory {
 	public static final int DEFAULT_MAX_THREAD_COUNT = 50;
 	public static final int DEFAULT_DIVISOR = 50;
 	public static final int DEFAULT_READ_TIMEOUT = 60 * 1000;
+	public static final String READ_TIMEOUT_KEY = "maven.wagon.rto";
+
 	private static final File TEMP_DIR = getCanonicalFile(System.getProperty("java.io.tmpdir"));
 	private static final String TEMP_DIR_PATH = TEMP_DIR.getAbsolutePath();
 	private static final String SDK_REGION_CHAIN_IN_USE = "S3 client is using the SDK region chaining resolution.";
@@ -144,7 +141,7 @@ public class S3Wagon extends AbstractWagon implements RequestFactory {
 	String protocol = getValue(PROTOCOL_KEY, HTTPS);
 	String vpce = getVpce();
 	boolean http = HTTP.equals(protocol);
-	int readTimeout = DEFAULT_READ_TIMEOUT;
+	int readTimeout = getValue(READ_TIMEOUT_KEY, DEFAULT_READ_TIMEOUT);
 	ObjectCannedACL acl = null;
 	S3TransferManager transferManager;
 
@@ -265,8 +262,10 @@ public class S3Wagon extends AbstractWagon implements RequestFactory {
 
 	public void configureEndpoint(S3ClientBuilder builder) {
 		URI endpoint = getS3Endpoint(getVpce());
-	    String configuredRegion = REGION;
+	    String configuredRegion = getRegion();
 	    Region region = null;
+	    
+	    
 
 	    // If the region was configured, set it.
 	    if (configuredRegion != null && !configuredRegion.isEmpty()) {
@@ -304,7 +303,7 @@ public class S3Wagon extends AbstractWagon implements RequestFactory {
 	
 	public void configureAsyncEndpoint(S3AsyncClientBuilder builder) {
 		URI endpoint = getS3Endpoint(getVpce());
-	    String configuredRegion = REGION;
+	    String configuredRegion = getRegion();
 	    Region region = null;
 
 	    // If the region was configured, set it.
