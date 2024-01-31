@@ -56,13 +56,16 @@ import software.amazon.awssdk.awscore.util.AwsHostNameUtils;
 import software.amazon.awssdk.core.ResponseInputStream;
 import software.amazon.awssdk.core.client.config.ClientOverrideConfiguration;
 import software.amazon.awssdk.core.exception.SdkClientException;
+import software.amazon.awssdk.core.internal.http.AmazonSyncHttpClient;
 import software.amazon.awssdk.core.internal.util.Mimetype;
 import software.amazon.awssdk.core.io.ResettableInputStream;
+import software.amazon.awssdk.http.apache.ApacheHttpClient;
 import software.amazon.awssdk.regions.Region;
 import software.amazon.awssdk.services.s3.S3AsyncClient;
 import software.amazon.awssdk.services.s3.S3AsyncClientBuilder;
 import software.amazon.awssdk.services.s3.S3Client;
 import software.amazon.awssdk.services.s3.S3ClientBuilder;
+import software.amazon.awssdk.services.s3.S3Configuration;
 import software.amazon.awssdk.services.s3.model.CommonPrefix;
 import software.amazon.awssdk.services.s3.model.CreateBucketRequest;
 import software.amazon.awssdk.services.s3.model.GetBucketAclRequest;
@@ -243,6 +246,9 @@ public class S3Wagon extends AbstractWagon implements RequestFactory {
 		builder.credentialsProvider(credentials);
 		ClientOverrideConfiguration clientOverride = ClientOverrideConfiguration.builder().apiCallTimeout(Duration.ofMillis(readTimeout)).apiCallAttemptTimeout(Duration.ofMillis(readTimeout)).build();
 		builder.overrideConfiguration(clientOverride);
+		ApacheHttpClient.Builder httpClientBuilder =
+				ApacheHttpClient.builder().connectionTimeout(Duration.ofMillis(readTimeout)).connectionTimeToLive(Duration.ofMillis(readTimeout));
+		builder.httpClientBuilder(httpClientBuilder);
 		builder.forcePathStyle(false);
 	    if (!(getVpce().isEmpty())) {
 	    	configureEndpoint(builder);

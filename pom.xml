@@ -109,6 +109,11 @@
 
 		<dependency>
 			<groupId>software.amazon.awssdk</groupId>
+			<artifactId>apache-client</artifactId>
+		</dependency>
+
+		<dependency>
+			<groupId>software.amazon.awssdk</groupId>
 			<artifactId>s3-transfer-manager</artifactId>
 		</dependency>
 		<dependency>
@@ -141,6 +146,7 @@
 			<artifactId>jakarta.xml.bind-api</artifactId>
 			<version>${jaxb.version}</version>
 		</dependency>
+
 	</dependencies>
 	<scm>
 		<connection>scm:git:https://github.com/seahen/maven-s3-wagon.git</connection>
