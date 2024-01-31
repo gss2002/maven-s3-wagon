@@ -35,6 +35,7 @@ import software.amazon.awssdk.auth.credentials.StaticCredentialsProvider;
 import software.amazon.awssdk.core.sync.RequestBody;
 import software.amazon.awssdk.services.s3.S3Client;
 import software.amazon.awssdk.services.s3.model.PutObjectRequest;
+import software.amazon.awssdk.services.s3.model.PutObjectResponse;
 import software.amazon.awssdk.services.s3.model.S3Exception;
 import software.amazon.awssdk.services.s3.model.S3Object;
 import software.amazon.awssdk.transfer.s3.S3TransferManager;
@@ -88,7 +89,12 @@ public class S3Utils {
 		// Store the file on S3
 		if (file.length() < MULTI_PART_UPLOAD_THRESHOLD) {
 			// Use normal upload for small files
-			client.putObject(request, RequestBody.fromFile(file));
+			PutObjectResponse putresp = client.putObject(request, RequestBody.fromFile(file));
+			log.info("AWSRequestIdPut: "+putresp.responseMetadata().requestId());
+			log.info("PutResp.isSuccessful: "+putresp.sdkHttpResponse().isSuccessful());
+			log.info("PutResp.statusCode: "+putresp.sdkHttpResponse().statusCode());
+			log.info("PutResp.statusText: "+putresp.sdkHttpResponse().statusText());
+
 		} else {
 			log.debug("Blocking multi-part upload: " + file.getAbsolutePath());
 			// Use multi-part upload for large files
